@@ -72,9 +72,45 @@ export class SupabaseStorageService {
   }
 
   /**
+   * Download raw file bytes from storage for SHA-256 integrity verification
+   */
+  async downloadFileBytes(storagePath: string): Promise<Buffer> {
+    if (this.supabaseClient) {
+      const { data, error } = await this.supabaseClient.storage
+        .from(this.bucketName)
+        .download(storagePath);
+
+      if (error || !data) {
+        this.logger.error(`Failed to download storage object '${storagePath}': ${error?.message}`);
+        throw new Error(`Storage object missing or unreadable: ${error?.message || 'No data'}`);
+      }
+
+      const arrayBuffer = await data.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    }
+
+    // In-memory mock fallback
+    const item = this.mockStorageMap.get(storagePath);
+    if (!item) {
+      throw new Error(`Storage object missing at path '${storagePath}'`);
+    }
+    return item.buffer;
+  }
+
+  /**
    * Check if file exists in mock storage (Used in unit tests)
    */
   hasMockFile(storagePath: string): boolean {
     return this.mockStorageMap.has(storagePath);
+  }
+
+  /**
+   * Helper to simulate byte tampering in unit tests
+   */
+  mutateMockFileBytes(storagePath: string, tamperedBuffer: Buffer) {
+    const item = this.mockStorageMap.get(storagePath);
+    if (item) {
+      item.buffer = tamperedBuffer;
+    }
   }
 }

@@ -9,7 +9,9 @@ import {
   UploadedFile,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentsService } from './documents.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -25,7 +27,7 @@ export class DocumentsController {
 
   /**
    * POST /api/v1/cases/:caseId/documents
-   * Multipart upload new document for case
+   * Multipart upload initial document (v1) for case
    */
   @Post('cases/:caseId/documents')
   @UseInterceptors(FileInterceptor('file'))
@@ -37,6 +39,47 @@ export class DocumentsController {
     @CurrentUser() user: UserPayload,
   ) {
     return this.documentsService.uploadDocument(caseId, uploadDto, file, user);
+  }
+
+  /**
+   * POST /api/v1/documents/:id/versions
+   * Upload new immutable document revision (v2, v3, etc.)
+   */
+  @Post('documents/:id/versions')
+  @UseGuards(DocumentAccessGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  @HttpCode(HttpStatus.CREATED)
+  async createVersion(
+    @Param('id') documentId: string,
+    @Body('changeDescription') changeDescription: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: UserPayload,
+  ) {
+    return this.documentsService.createVersion(documentId, changeDescription, file, user);
+  }
+
+  /**
+   * GET /api/v1/documents/:id/versions/:versionId/download
+   * Automatic SHA-256 integrity verification and secure file download
+   */
+  @Get('documents/:id/versions/:versionId/download')
+  @UseGuards(DocumentAccessGuard)
+  async downloadVersion(
+    @Param('id') documentId: string,
+    @Param('versionId') versionId: string,
+    @CurrentUser() user: UserPayload,
+    @Res() res: Response,
+  ) {
+    const download = await this.documentsService.downloadVersionWithIntegrityCheck(
+      documentId,
+      versionId,
+      user,
+    );
+
+    res.setHeader('Content-Type', download.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${download.filename}"`);
+    res.setHeader('X-Document-SHA256', download.sha256Hash);
+    res.send(download.buffer);
   }
 
   /**
