@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { AuditEventType, IncidentType, IncidentSeverity } from '@prisma/client';
+import { AuditEventType, IncidentType, IncidentSeverity, RoleName } from '@prisma/client';
+import { UserPayload } from '../auth/decorators/current-user.decorator';
 
 export const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 
@@ -198,5 +199,51 @@ export class AuditChainService {
     } catch (err: any) {
       this.logger.error(`Failed to record audit verification security incident: ${err.message}`);
     }
+  }
+
+  /**
+   * Fetch audit events with role & CBAC authorization filtering
+   */
+  async getAuditEventsForUser(user: UserPayload) {
+    let events;
+
+    if (user.role === RoleName.ADMIN) {
+      events = await this.prisma.auditEvent.findMany({
+        orderBy: { sequenceNumber: 'desc' },
+        take: 100,
+        include: {
+          user: { select: { fullName: true, role: true, email: true } },
+          case: { select: { caseNumber: true, title: true } },
+          document: { select: { title: true } },
+        },
+      });
+    } else {
+      const assignments = await this.prisma.caseAssignment.findMany({
+        where: { userId: user.userId },
+        select: { caseId: true },
+      });
+      const assignedCaseIds = assignments.map((a) => a.caseId);
+
+      events = await this.prisma.auditEvent.findMany({
+        where: {
+          OR: [
+            { caseId: { in: assignedCaseIds } },
+            { userId: user.userId },
+          ],
+        },
+        orderBy: { sequenceNumber: 'desc' },
+        take: 100,
+        include: {
+          user: { select: { fullName: true, role: true, email: true } },
+          case: { select: { caseNumber: true, title: true } },
+          document: { select: { title: true } },
+        },
+      });
+    }
+
+    return events.map((event) => ({
+      ...event,
+      sequenceNumber: event.sequenceNumber.toString(),
+    }));
   }
 }

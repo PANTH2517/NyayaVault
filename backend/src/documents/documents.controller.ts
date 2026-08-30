@@ -4,6 +4,7 @@ import {
   Post,
   Param,
   Body,
+  Query,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -15,6 +16,8 @@ import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentsService } from './documents.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
+import { ApproveDocumentDto } from './dto/approve-document.dto';
+import { SearchDocumentsDto } from './dto/search-documents.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CaseAccessGuard } from '../cases/guards/case-access.guard';
 import { DocumentAccessGuard } from './guards/document-access.guard';
@@ -110,5 +113,70 @@ export class DocumentsController {
   @UseGuards(DocumentAccessGuard)
   async findVersionsForDocument(@Param('id') documentId: string) {
     return this.documentsService.findVersionsForDocument(documentId);
+  }
+
+  /**
+   * GET /api/v1/documents/search
+   * Search and filter documents with CBAC authorization & pagination
+   */
+  @Get('documents/search')
+  async searchDocuments(
+    @Query() query: SearchDocumentsDto,
+    @CurrentUser() user: UserPayload,
+  ) {
+    return this.documentsService.searchDocuments(user, query);
+  }
+
+  /**
+   * POST /api/v1/documents/:id/submit-for-review
+   * Submit document for review (DRAFT -> UNDER_REVIEW)
+   */
+  @Post('documents/:id/submit-for-review')
+  @UseGuards(DocumentAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async submitForReview(
+    @Param('id') documentId: string,
+    @CurrentUser() user: UserPayload,
+  ) {
+    return this.documentsService.submitForReview(documentId, user);
+  }
+
+  /**
+   * POST /api/v1/documents/:id/approve
+   * Approve document for specific version (UNDER_REVIEW -> APPROVED)
+   */
+  @Post('documents/:id/approve')
+  @UseGuards(DocumentAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async approveDocument(
+    @Param('id') documentId: string,
+    @Body() dto: ApproveDocumentDto,
+    @CurrentUser() user: UserPayload,
+  ) {
+    return this.documentsService.approveDocument(documentId, dto, user);
+  }
+
+  /**
+   * POST /api/v1/documents/:id/seal
+   * Seal approved document (APPROVED -> SEALED)
+   */
+  @Post('documents/:id/seal')
+  @UseGuards(DocumentAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async sealDocument(
+    @Param('id') documentId: string,
+    @CurrentUser() user: UserPayload,
+  ) {
+    return this.documentsService.sealDocument(documentId, user);
+  }
+
+  /**
+   * GET /api/v1/documents/:id/approvals
+   * Get approval history for document
+   */
+  @Get('documents/:id/approvals')
+  @UseGuards(DocumentAccessGuard)
+  async getApprovalsForDocument(@Param('id') documentId: string) {
+    return this.documentsService.getApprovalsForDocument(documentId);
   }
 }

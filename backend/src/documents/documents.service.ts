@@ -9,6 +9,8 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from './supabase-storage.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
+import { ApproveDocumentDto } from './dto/approve-document.dto';
+import { SearchDocumentsDto } from './dto/search-documents.dto';
 import { UserPayload } from '../auth/decorators/current-user.decorator';
 import { AuditChainService } from '../security/audit-chain.service';
 import { DocumentIntegrityService } from '../security/document-integrity.service';
@@ -162,6 +164,10 @@ export class DocumentsService {
       throw new NotFoundException(`Document with ID '${documentId}' not found`);
     }
 
+    if (document.currentStatus === DocumentStatus.SEALED) {
+      throw new ForbiddenException('Cannot create a new revision for a SEALED document');
+    }
+
     // Validate Revision Permissions (ADMIN or assigned INVESTIGATING_OFFICER)
     await this.validateUploadPermissions(document.caseId, user);
 
@@ -201,7 +207,7 @@ export class DocumentsService {
 
         await tx.document.update({
           where: { id: documentId },
-          data: { currentVersionId: newVersion.id },
+          data: { currentVersionId: newVersion.id, currentStatus: DocumentStatus.DRAFT },
         });
 
         return {
@@ -352,7 +358,7 @@ export class DocumentsService {
 
     return documents.map((doc) => ({
       ...doc,
-      versions: doc.versions.map((v) => ({
+      versions: (doc.versions || []).map((v) => ({
         ...v,
         fileSizeBytes: v.fileSizeBytes.toString(),
       })),
@@ -379,7 +385,7 @@ export class DocumentsService {
 
     return {
       ...document,
-      versions: document.versions.map((v) => ({
+      versions: (document.versions || []).map((v) => ({
         ...v,
         fileSizeBytes: v.fileSizeBytes.toString(),
       })),
@@ -456,4 +462,324 @@ export class DocumentsService {
       );
     }
   }
+
+  /**
+   * Submit Document for Review (DRAFT -> UNDER_REVIEW)
+   */
+  async submitForReview(documentId: string, user: UserPayload) {
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!document) {
+      throw new NotFoundException(`Document with ID '${documentId}' not found`);
+    }
+
+    // Validate access (ADMIN or assigned INVESTIGATING_OFFICER)
+    await this.validateUploadPermissions(document.caseId, user);
+
+    if (document.currentStatus !== DocumentStatus.DRAFT) {
+      throw new BadRequestException(
+        `Cannot submit document for review from state '${document.currentStatus}'. Document must be in DRAFT state.`
+      );
+    }
+
+    if (!document.currentVersionId) {
+      throw new BadRequestException('Document has no active version to submit for review');
+    }
+
+    const versionId = document.currentVersionId;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      await tx.document.update({
+        where: { id: documentId },
+        data: { currentStatus: DocumentStatus.UNDER_REVIEW },
+      });
+
+      const approval = await tx.approval.create({
+        data: {
+          documentId,
+          versionId,
+          requestedById: user.userId,
+          status: DocumentStatus.UNDER_REVIEW,
+        },
+      });
+
+      return approval;
+    });
+
+    // Record Audit Event
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.DOCUMENT_STATUS_CHANGED,
+      userId: user.userId,
+      caseId: document.caseId,
+      documentId,
+      versionId,
+      action: `Submitted document '${document.title}' for review (Bound Version ID: ${versionId})`,
+      metadata: {
+        previousStatus: DocumentStatus.DRAFT,
+        newStatus: DocumentStatus.UNDER_REVIEW,
+        versionId,
+      },
+    });
+
+    return result;
+  }
+
+  /**
+   * Approve Document Version (UNDER_REVIEW -> APPROVED)
+   * Strictly bound to currentVersionId
+   */
+  async approveDocument(documentId: string, dto: ApproveDocumentDto, user: UserPayload) {
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!document) {
+      throw new NotFoundException(`Document with ID '${documentId}' not found`);
+    }
+
+    // Enforce Approval RBAC (SUPERVISOR or ADMIN)
+    if (user.role !== RoleName.SUPERVISOR && user.role !== RoleName.ADMIN) {
+      throw new ForbiddenException(`Role '${user.role}' is not authorized to approve documents`);
+    }
+
+    if (user.role === RoleName.SUPERVISOR) {
+      const assignment = await this.prisma.caseAssignment.findUnique({
+        where: { caseId_userId: { caseId: document.caseId, userId: user.userId } },
+      });
+      if (!assignment) {
+        throw new ForbiddenException('Access denied: You are not assigned to this case');
+      }
+    }
+
+    if (document.currentStatus !== DocumentStatus.UNDER_REVIEW) {
+      throw new BadRequestException(
+        `Cannot approve document in state '${document.currentStatus}'. Document must be UNDER_REVIEW.`
+      );
+    }
+
+    // Version Binding Check: Must match exact version being reviewed
+    if (dto.versionId !== document.currentVersionId) {
+      throw new BadRequestException(
+        `Approval version mismatch: Submitted version '${dto.versionId}' does not match current document version '${document.currentVersionId}'`
+      );
+    }
+
+    // Find pending approval record
+    const pendingApproval = await this.prisma.approval.findFirst({
+      where: {
+        documentId,
+        versionId: dto.versionId,
+        status: DocumentStatus.UNDER_REVIEW,
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      let updatedApproval;
+      if (pendingApproval) {
+        updatedApproval = await tx.approval.update({
+          where: { id: pendingApproval.id },
+          data: {
+            status: DocumentStatus.APPROVED,
+            approvedById: user.userId,
+            decidedAt: new Date(),
+            comments: dto.comments || null,
+          },
+        });
+      } else {
+        updatedApproval = await tx.approval.create({
+          data: {
+            documentId,
+            versionId: dto.versionId,
+            requestedById: user.userId,
+            approvedById: user.userId,
+            status: DocumentStatus.APPROVED,
+            comments: dto.comments || null,
+            decidedAt: new Date(),
+          },
+        });
+      }
+
+      await tx.document.update({
+        where: { id: documentId },
+        data: { currentStatus: DocumentStatus.APPROVED },
+      });
+
+      return updatedApproval;
+    });
+
+    // Record Audit Event
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.DOCUMENT_APPROVED,
+      userId: user.userId,
+      caseId: document.caseId,
+      documentId,
+      versionId: dto.versionId,
+      action: `Approved document '${document.title}' for bound Version ID: ${dto.versionId}`,
+      metadata: {
+        versionId: dto.versionId,
+        comments: dto.comments,
+      },
+    });
+
+    return result;
+  }
+
+  /**
+   * Seal Approved Document (APPROVED -> SEALED)
+   */
+  async sealDocument(documentId: string, user: UserPayload) {
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!document) {
+      throw new NotFoundException(`Document with ID '${documentId}' not found`);
+    }
+
+    if (user.role !== RoleName.ADMIN && user.role !== RoleName.SUPERVISOR) {
+      throw new ForbiddenException(`Role '${user.role}' is not authorized to seal documents`);
+    }
+
+    if (user.role === RoleName.SUPERVISOR) {
+      const assignment = await this.prisma.caseAssignment.findUnique({
+        where: { caseId_userId: { caseId: document.caseId, userId: user.userId } },
+      });
+      if (!assignment) {
+        throw new ForbiddenException('Access denied: You are not assigned to this case');
+      }
+    }
+
+    if (document.currentStatus !== DocumentStatus.APPROVED) {
+      throw new BadRequestException(
+        `Cannot seal document in state '${document.currentStatus}'. Document must be APPROVED.`
+      );
+    }
+
+    const updatedDocument = await this.prisma.document.update({
+      where: { id: documentId },
+      data: { currentStatus: DocumentStatus.SEALED },
+    });
+
+    // Record Audit Event
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.DOCUMENT_STATUS_CHANGED,
+      userId: user.userId,
+      caseId: document.caseId,
+      documentId,
+      versionId: document.currentVersionId || undefined,
+      action: `Sealed document '${document.title}'`,
+      metadata: {
+        previousStatus: DocumentStatus.APPROVED,
+        newStatus: DocumentStatus.SEALED,
+      },
+    });
+
+    return updatedDocument;
+  }
+
+  /**
+   * Get Approval History for Document
+   */
+  async getApprovalsForDocument(documentId: string) {
+    const approvals = await this.prisma.approval.findMany({
+      where: { documentId },
+      include: {
+        requestedBy: { select: { id: true, email: true, fullName: true, role: true } },
+        approvedBy: { select: { id: true, email: true, fullName: true, role: true } },
+        version: { select: { id: true, versionNumber: true, sha256Hash: true } },
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+
+    return approvals;
+  }
+
+  /**
+   * Search Documents with CBAC Authorization & Multi-Field Filtering
+   */
+  async searchDocuments(user: UserPayload, queryParams: SearchDocumentsDto) {
+    const page = queryParams.page || 1;
+    const limit = queryParams.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const whereClause: any = {};
+
+    // 1. Authorization Filter (ADMIN sees all; Non-admin sees assigned cases)
+    if (user.role !== RoleName.ADMIN) {
+      whereClause.case = {
+        assignments: {
+          some: {
+            userId: user.userId,
+          },
+        },
+      };
+    }
+
+    // 2. Metadata Filters
+    if (queryParams.caseId) {
+      whereClause.caseId = queryParams.caseId;
+    }
+
+    if (queryParams.classification) {
+      whereClause.classification = queryParams.classification;
+    }
+
+    if (queryParams.status) {
+      whereClause.currentStatus = queryParams.status;
+    }
+
+    // 3. Search Query Keyword Filter
+    if (queryParams.q && queryParams.q.trim() !== '') {
+      const qStr = queryParams.q.trim();
+      const existingCaseWhere = whereClause.case || {};
+
+      whereClause.AND = [
+        {
+          OR: [
+            { title: { contains: qStr, mode: 'insensitive' } },
+            { documentType: { contains: qStr, mode: 'insensitive' } },
+            { case: { caseNumber: { contains: qStr, mode: 'insensitive' } } },
+            { case: { title: { contains: qStr, mode: 'insensitive' } } },
+          ],
+        },
+      ];
+    }
+
+    const [documents, total] = await Promise.all([
+      this.prisma.document.findMany({
+        where: whereClause,
+        include: {
+          case: { select: { id: true, caseNumber: true, title: true } },
+          versions: {
+            orderBy: { versionNumber: 'desc' },
+            take: 1,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.document.count({ where: whereClause }),
+    ]);
+
+    const formattedDocs = documents.map((doc) => ({
+      ...doc,
+      versions: (doc.versions || []).map((v) => ({
+        ...v,
+        fileSizeBytes: v.fileSizeBytes.toString(),
+      })),
+    }));
+
+    return {
+      data: formattedDocs,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
 }
+

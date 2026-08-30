@@ -472,4 +472,24 @@ describe('SecurityModule & Milestone 6 Core Test Suite', () => {
     const unassignedList = await incidentsService.findAllForUser(unassignedIoUser);
     expect(unassignedList).toHaveLength(0); // unassigned receive empty list
   });
+
+  it('Tamper Simulator mutates ONLY storage file bytes and leaves DB hash and audit logs untouched', async () => {
+    const originalHash = ver1.sha256Hash;
+    const originalAuditCount = auditEventsStore.length;
+
+    // Mutate storage bytes via simulateTamperInStorage
+    await storageService.simulateTamperInStorage(ver1.storagePath);
+
+    // Database version hash remains untouched
+    const versionInDb = versionsStore.find((v) => v.id === ver1.id);
+    expect(versionInDb.sha256Hash).toBe(originalHash);
+
+    // Audit logs remain untouched before access attempt
+    expect(auditEventsStore.length).toBe(originalAuditCount);
+
+    // Subsequent access attempt now triggers hash mismatch & access block
+    await expect(
+      documentsService.downloadVersionWithIntegrityCheck(doc1.id, ver1.id, adminUser)
+    ).rejects.toThrow('DOCUMENT INTEGRITY COMPROMISED — ACCESS BLOCKED');
+  });
 });

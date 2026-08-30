@@ -113,4 +113,28 @@ export class SupabaseStorageService {
       item.buffer = tamperedBuffer;
     }
   }
+
+  /**
+   * Controlled hackathon demo helper to simulate byte tampering in storage
+   */
+  async simulateTamperInStorage(storagePath: string): Promise<void> {
+    const tamperedBuffer = Buffer.from(`TAMPERED_MALICIOUS_BYTES_UNAUTHORIZED_ALTERATION_${Date.now()}`);
+    if (this.supabaseClient) {
+      const { error } = await this.supabaseClient.storage
+        .from(this.bucketName)
+        .upload(storagePath, tamperedBuffer, {
+          contentType: 'application/pdf',
+          upsert: true,
+        });
+      if (error) {
+        this.logger.error(`Failed to mutate bytes in Supabase storage for path '${storagePath}': ${error.message}`);
+        throw new Error(`Tamper simulation failed in Supabase: ${error.message}`);
+      }
+    } else {
+      this.mockStorageMap.set(storagePath, { buffer: tamperedBuffer, mimeType: 'application/pdf' });
+    }
+    this.logger.warn(
+      `[TAMPER SIMULATOR] Successfully mutated stored file bytes for path '${storagePath}' without altering database SHA-256 hash or audit records.`
+    );
+  }
 }

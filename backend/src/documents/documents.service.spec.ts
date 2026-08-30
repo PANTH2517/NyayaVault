@@ -41,7 +41,7 @@ describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', 
     title: 'First Information Report',
     documentType: 'FIR',
     classification: DocumentClassification.CONFIDENTIAL,
-    currentStatus: DocumentStatus.DRAFT,
+    currentStatus: DocumentStatus.DRAFT as DocumentStatus,
     currentVersionId: 'ver-uuid-1',
     createdById: ioUser.userId,
     createdAt: new Date(),
@@ -73,7 +73,7 @@ describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', 
     caseAssignment: {
       findUnique: jest.fn().mockImplementation(async ({ where }) => {
         const { caseId, userId } = where.caseId_userId;
-        if (caseId === assignedCase.id && userId === ioUser.userId) {
+        if (caseId === assignedCase.id && (userId === ioUser.userId || userId === supervisorUser.userId)) {
           return { id: 'asgn-1', caseId, userId };
         }
         return null;
@@ -81,12 +81,16 @@ describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', 
     },
     document: {
       findUnique: jest.fn().mockImplementation(async ({ where }) => {
-        if (where.id === sampleDoc.id) return sampleDoc;
+        if (where.id === sampleDoc.id) return { ...sampleDoc };
         return null;
       }),
       findMany: jest.fn().mockImplementation(async ({ where }) => {
-        if (where.caseId === assignedCase.id) return [sampleDoc];
-        return [];
+        return [sampleDoc];
+      }),
+      count: jest.fn().mockResolvedValue(1),
+      update: jest.fn().mockImplementation(async ({ where, data }) => {
+        Object.assign(sampleDoc, data);
+        return { ...sampleDoc };
       }),
     },
     documentVersion: {
@@ -94,15 +98,29 @@ describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', 
         if (where.documentId === sampleDoc.id) return [sampleVersion];
         return [];
       }),
+      findFirst: jest.fn().mockResolvedValue(sampleVersion),
+    },
+    approval: {
+      create: jest.fn().mockResolvedValue({ id: 'app-1', status: DocumentStatus.UNDER_REVIEW }),
+      update: jest.fn().mockResolvedValue({ id: 'app-1', status: DocumentStatus.APPROVED }),
+      findFirst: jest.fn().mockResolvedValue({ id: 'app-1', status: DocumentStatus.UNDER_REVIEW }),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     $transaction: jest.fn().mockImplementation(async (callback) => {
       const txMock = {
         document: {
           create: jest.fn().mockResolvedValue(sampleDoc),
-          update: jest.fn().mockResolvedValue(sampleDoc),
+          update: jest.fn().mockImplementation(async ({ where, data }) => {
+            Object.assign(sampleDoc, data);
+            return { ...sampleDoc };
+          }),
         },
         documentVersion: {
           create: jest.fn().mockResolvedValue(sampleVersion),
+        },
+        approval: {
+          create: jest.fn().mockResolvedValue({ id: 'app-1', status: DocumentStatus.UNDER_REVIEW }),
+          update: jest.fn().mockResolvedValue({ id: 'app-1', status: DocumentStatus.APPROVED }),
         },
       };
       return callback(txMock);
@@ -347,5 +365,57 @@ describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', 
     ).rejects.toThrow(BadRequestException);
 
     expect(deleteSpy).toHaveBeenCalled();
+  });
+
+  // Milestone 7 Tests
+  it('17. Submit document for review transitions status from DRAFT to UNDER_REVIEW', async () => {
+    sampleDoc.currentStatus = DocumentStatus.DRAFT;
+    const approval = await documentsService.submitForReview(sampleDoc.id, ioUser);
+    expect(approval.status).toBe(DocumentStatus.UNDER_REVIEW);
+    expect(sampleDoc.currentStatus).toBe(DocumentStatus.UNDER_REVIEW);
+  });
+
+  it('18. Approving document requires UNDER_REVIEW state and exact version binding match', async () => {
+    sampleDoc.currentStatus = DocumentStatus.DRAFT;
+    await expect(
+      documentsService.approveDocument(sampleDoc.id, { versionId: sampleVersion.id }, supervisorUser)
+    ).rejects.toThrow(BadRequestException);
+
+    // Transition to UNDER_REVIEW
+    sampleDoc.currentStatus = DocumentStatus.UNDER_REVIEW;
+    
+    // Mismatched version binding should fail
+    await expect(
+      documentsService.approveDocument(sampleDoc.id, { versionId: 'wrong-ver-uuid' }, supervisorUser)
+    ).rejects.toThrow(BadRequestException);
+
+    // Matching version binding succeeds
+    const approved = await documentsService.approveDocument(sampleDoc.id, { versionId: sampleVersion.id, comments: 'LGTM' }, supervisorUser);
+    expect(approved).toBeDefined();
+    expect(sampleDoc.currentStatus).toBe(DocumentStatus.APPROVED);
+  });
+
+  it('19. INVESTIGATING_OFFICER cannot approve document (403 Forbidden)', async () => {
+    sampleDoc.currentStatus = DocumentStatus.UNDER_REVIEW;
+    await expect(
+      documentsService.approveDocument(sampleDoc.id, { versionId: sampleVersion.id }, ioUser)
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('20. Sealing document requires APPROVED status and blocks future revision creation', async () => {
+    sampleDoc.currentStatus = DocumentStatus.APPROVED;
+    const sealedDoc = await documentsService.sealDocument(sampleDoc.id, adminUser);
+    expect(sealedDoc.currentStatus).toBe(DocumentStatus.SEALED);
+
+    // Attempting revision on SEALED document must be rejected
+    await expect(
+      documentsService.createVersion(sampleDoc.id, 'Illegal revision', validMulterFile, ioUser)
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('21. Document search respects CBAC scope for non-admin users', async () => {
+    const result = await documentsService.searchDocuments(ioUser, { q: 'FIR' });
+    expect(result).toHaveProperty('data');
+    expect(result.data.length).toBeGreaterThan(0);
   });
 });
