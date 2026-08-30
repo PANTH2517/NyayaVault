@@ -97,7 +97,13 @@ describe('SecurityModule & Milestone 6 Core Test Suite', () => {
     },
     document: {
       findUnique: jest.fn().mockImplementation(async ({ where }) => {
-        return documentsStore.find((d) => d.id === where.id) || null;
+        const doc = documentsStore.find((d) => d.id === where.id);
+        if (!doc) return null;
+        const versions = versionsStore.filter((v) => v.documentId === doc.id);
+        return {
+          ...doc,
+          versions,
+        };
       }),
       findMany: jest.fn().mockImplementation(async () => documentsStore),
       create: jest.fn().mockImplementation(async ({ data }) => {
@@ -165,7 +171,16 @@ describe('SecurityModule & Milestone 6 Core Test Suite', () => {
             (where.status?.in ? where.status.in.includes(i.status) : i.status === where.status)
         ) || null;
       }),
-      findMany: jest.fn().mockImplementation(async () => incidentsStore),
+      findMany: jest.fn().mockImplementation(async (query) => {
+        if (query?.where?.case?.assignments?.some?.userId) {
+          const uId = query.where.case.assignments.some.userId;
+          if (uId === ioUser.userId) {
+            return incidentsStore.filter((inc) => inc.caseId === caseRecord.id);
+          }
+          return [];
+        }
+        return incidentsStore;
+      }),
       findUnique: jest.fn().mockImplementation(async ({ where }) => {
         return incidentsStore.find((i) => i.id === where.id) || null;
       }),

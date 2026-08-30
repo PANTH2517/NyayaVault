@@ -13,6 +13,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DocumentAccessGuard } from './guards/document-access.guard';
 import { CaseAccessGuard } from '../cases/guards/case-access.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AuditChainService } from '../security/audit-chain.service';
+import { DocumentIntegrityService } from '../security/document-integrity.service';
+import { SecurityIncidentsService } from '../security/security-incidents.service';
 import { RoleName, DocumentClassification, DocumentStatus } from '@prisma/client';
 
 describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', () => {
@@ -123,6 +126,16 @@ describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', 
     path: '',
   };
 
+  const mockAuditChainService = {
+    recordEvent: jest.fn().mockResolvedValue({ id: 'aud-1' }),
+  };
+  const mockIntegrityService = {
+    verifyDocumentVersionIntegrity: jest.fn().mockResolvedValue({ valid: true }),
+  };
+  const mockIncidentsService = {
+    createIncident: jest.fn().mockResolvedValue({ id: 'inc-1' }),
+  };
+
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       imports: [
@@ -136,6 +149,9 @@ describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', 
         DocumentAccessGuard,
         CaseAccessGuard,
         JwtAuthGuard,
+        { provide: AuditChainService, useValue: mockAuditChainService },
+        { provide: DocumentIntegrityService, useValue: mockIntegrityService },
+        { provide: SecurityIncidentsService, useValue: mockIncidentsService },
         {
           provide: PrismaService,
           useValue: mockPrismaService,
