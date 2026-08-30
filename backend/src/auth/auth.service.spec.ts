@@ -212,6 +212,9 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
         password: 'Admin@Nyaya2026',
       });
 
+      // Delay 1 second to ensure iat (issued at) timestamp increments for new access token
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       // 2. Perform refresh
       const refreshRes = await authService.refreshTokens({
         refreshToken: loginRes.refreshToken,

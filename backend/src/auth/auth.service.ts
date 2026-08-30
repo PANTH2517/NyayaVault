@@ -55,7 +55,7 @@ export class AuthService {
 
     let payload: any;
     try {
-      const refreshSecret = process.env.REFRESH_TOKEN_SECRET || 'dev_refresh_token_secret_change_in_production';
+      const refreshSecret = process.env.REFRESH_TOKEN_SECRET || 'dev_refresh_token_secret_for_local_testing_only';
       payload = await this.jwtService.verifyAsync(refreshToken, { secret: refreshSecret });
     } catch (err) {
       throw new UnauthorizedException('Invalid or expired refresh token');
@@ -121,8 +121,8 @@ export class AuthService {
    * Helper to generate JWT access and refresh tokens
    */
   private async generateTokens(user: User) {
-    const jwtSecret = process.env.JWT_SECRET || 'dev_jwt_secret_change_in_production';
-    const refreshSecret = process.env.REFRESH_TOKEN_SECRET || 'dev_refresh_token_secret_change_in_production';
+    const jwtSecret = process.env.JWT_SECRET || 'dev_jwt_secret_key_for_local_testing_only';
+    const refreshSecret = process.env.REFRESH_TOKEN_SECRET || 'dev_refresh_token_secret_for_local_testing_only';
     const jwtExpiry = process.env.JWT_EXPIRATION || '15m';
     const refreshExpiry = process.env.REFRESH_TOKEN_EXPIRATION || '7d';
 
