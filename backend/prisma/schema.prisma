@@ -1,0 +1,247 @@
+// NyayaVault Prisma Schema Definition
+// Database & Storage: Supabase PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// --------------------------------------------------------
+// Enums
+// --------------------------------------------------------
+
+enum RoleName {
+  ADMIN
+  INVESTIGATING_OFFICER
+  SUPERVISOR
+  PROSECUTOR
+}
+
+enum CaseStatus {
+  OPEN
+  UNDER_INVESTIGATION
+  CLOSED
+  ARCHIVED
+}
+
+enum DocumentClassification {
+  RESTRICTED
+  CONFIDENTIAL
+  HIGHLY_CONFIDENTIAL
+}
+
+enum DocumentStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  SEALED
+}
+
+enum AuditEventType {
+  LOGIN
+  LOGIN_FAILED
+  DOCUMENT_UPLOADED
+  DOCUMENT_VIEWED
+  DOCUMENT_DOWNLOADED
+  DOCUMENT_VERSION_CREATED
+  DOCUMENT_STATUS_CHANGED
+  DOCUMENT_APPROVED
+  DOCUMENT_ACCESS_DENIED
+  CASE_ACCESS_GRANTED
+  CASE_ACCESS_REVOKED
+  INTEGRITY_VERIFIED
+  INTEGRITY_FAILED
+  SECURITY_INCIDENT_CREATED
+}
+
+enum IncidentType {
+  DOCUMENT_TAMPER_DETECTED
+  AUDIT_CHAIN_VERIFICATION_FAILED
+  REPEATED_UNAUTHORIZED_ACCESS
+  SUSPICIOUS_DOCUMENT_ACTION
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  DISMISSED
+}
+
+// --------------------------------------------------------
+// Models
+// --------------------------------------------------------
+
+model User {
+  id                 String            @id @default(uuid())
+  email              String            @unique
+  passwordHash       String
+  fullName           String
+  role               RoleName          @default(INVESTIGATING_OFFICER)
+  isActive           Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  caseAssignments    CaseAssignment[]
+  createdCases       Case[]            @relation("CaseCreator")
+  uploadedVersions   DocumentVersion[] @relation("VersionUploader")
+  auditEvents        AuditEvent[]
+  requestedApprovals Approval[]       @relation("ApprovalRequester")
+  decidedApprovals   Approval[]       @relation("ApprovalDecider")
+
+  @@map("users")
+}
+
+model Case {
+  id           String             @id @default(uuid())
+  caseNumber   String             @unique
+  title        String
+  description  String?
+  status       CaseStatus         @default(OPEN)
+  createdById  String
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  createdBy    User               @relation("CaseCreator", fields: [createdById], references: [id])
+  assignments  CaseAssignment[]
+  documents    Document[]
+  auditEvents  AuditEvent[]
+  incidents    SecurityIncident[]
+
+  @@map("cases")
+}
+
+model CaseAssignment {
+  id         String   @id @default(uuid())
+  caseId     String
+  userId     String
+  roleInCase String?
+  assignedAt DateTime @default(now())
+
+  case       Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([caseId, userId])
+  @@map("case_assignments")
+}
+
+model Document {
+  id               String                 @id @default(uuid())
+  caseId           String
+  title            String
+  documentType     String
+  classification   DocumentClassification @default(CONFIDENTIAL)
+  currentStatus    DocumentStatus         @default(DRAFT)
+  currentVersionId String?                @unique
+  createdById      String
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  case             Case                   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  versions         DocumentVersion[]      @relation("DocumentToVersions")
+  auditEvents      AuditEvent[]
+  approvals        Approval[]
+  incidents        SecurityIncident[]
+
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id                String             @id @default(uuid())
+  documentId        String
+  versionNumber     Int
+  storagePath       String
+  fileSizeBytes     BigInt
+  mimeType          String
+  sha256Hash        String
+  isCompromised     Boolean            @default(false)
+  changeDescription String?
+  createdById       String
+  createdAt         DateTime           @default(now())
+
+  document          Document           @relation("DocumentToVersions", fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy         User               @relation("VersionUploader", fields: [createdById], references: [id])
+  auditEvents       AuditEvent[]
+  approvals         Approval[]
+  incidents         SecurityIncident[]
+
+  @@unique([documentId, versionNumber])
+  @@map("document_versions")
+}
+
+model AuditEvent {
+  id                String          @id @default(uuid())
+  sequenceNumber    BigInt          @unique @default(autoincrement())
+  eventType         AuditEventType
+  userId            String?
+  caseId            String?
+  documentId        String?
+  versionId         String?
+  action            String
+  ipAddress         String?
+  userAgent         String?
+  metadata          Json?
+  previousEventHash String?
+  currentEventHash  String
+  createdAt         DateTime        @default(now())
+
+  user              User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  case              Case?           @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  document          Document?       @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  version           DocumentVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  @@index([sequenceNumber])
+  @@index([caseId])
+  @@index([documentId])
+  @@map("audit_events")
+}
+
+model Approval {
+  id            String         @id @default(uuid())
+  documentId    String
+  versionId     String
+  requestedById String
+  approvedById  String?
+  status        DocumentStatus @default(UNDER_REVIEW)
+  comments      String?
+  requestedAt   DateTime       @default(now())
+  decidedAt     DateTime?
+
+  document      Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version       DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  requestedBy   User            @relation("ApprovalRequester", fields: [requestedById], references: [id])
+  approvedBy    User?           @relation("ApprovalDecider", fields: [approvedById], references: [id])
+
+  @@map("approvals")
+}
+
+model SecurityIncident {
+  id          String           @id @default(uuid())
+  incidentType IncidentType
+  severity    IncidentSeverity @default(HIGH)
+  caseId      String?
+  documentId  String?
+  versionId   String?
+  status      IncidentStatus   @default(OPEN)
+  description String
+  detectedAt  DateTime         @default(now())
+  resolvedAt  DateTime?
+
+  case        Case?            @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  document    Document?        @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  version     DocumentVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  @@map("security_incidents")
+}
