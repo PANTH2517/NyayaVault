@@ -1,60 +1,75 @@
 import { PrismaClient, RoleName, CaseStatus } from '@prisma/client';
+import * as argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
-// Note: Authentication flow and Argon2 password hashing are implemented in Milestone 3.
-// This DEV_HASH_PLACEHOLDER is a non-functional development string for initial schema seeding.
-const DEV_HASH_PLACEHOLDER = 'DEV_HASH_PLACEHOLDER_REPLACE_IN_MILESTONE_3';
-
 async function main() {
-  console.log('Seeding initial development data for NyayaVault...');
+  console.log('Seeding development users with Argon2 password hashes...');
+
+  // Compute Argon2 hashes for development credentials
+  const adminPasswordHash = await argon2.hash('Admin@Nyaya2026');
+  const ioPasswordHash = await argon2.hash('Officer@Nyaya2026');
+  const superPasswordHash = await argon2.hash('Super@Nyaya2026');
+  const prosecutorPasswordHash = await argon2.hash('Prosecutor@Nyaya2026');
 
   // 1. Seed Development Users for each core role
   const adminUser = await prisma.user.upsert({
     where: { email: 'admin@nyayavault.gov.in' },
-    update: {},
+    update: {
+      passwordHash: adminPasswordHash,
+    },
     create: {
       email: 'admin@nyayavault.gov.in',
       fullName: 'System Administrator',
-      passwordHash: DEV_HASH_PLACEHOLDER,
+      passwordHash: adminPasswordHash,
       role: RoleName.ADMIN,
     },
   });
 
   const ioUser = await prisma.user.upsert({
     where: { email: 'io.sharma@nyayavault.gov.in' },
-    update: {},
+    update: {
+      passwordHash: ioPasswordHash,
+    },
     create: {
       email: 'io.sharma@nyayavault.gov.in',
       fullName: 'Inspector R. Sharma',
-      passwordHash: DEV_HASH_PLACEHOLDER,
+      passwordHash: ioPasswordHash,
       role: RoleName.INVESTIGATING_OFFICER,
     },
   });
 
   const supervisorUser = await prisma.user.upsert({
     where: { email: 'super.verma@nyayavault.gov.in' },
-    update: {},
+    update: {
+      passwordHash: superPasswordHash,
+    },
     create: {
       email: 'super.verma@nyayavault.gov.in',
       fullName: 'Superintendent A. Verma',
-      passwordHash: DEV_HASH_PLACEHOLDER,
+      passwordHash: superPasswordHash,
       role: RoleName.SUPERVISOR,
     },
   });
 
   const prosecutorUser = await prisma.user.upsert({
     where: { email: 'prosecutor.mehta@nyayavault.gov.in' },
-    update: {},
+    update: {
+      passwordHash: prosecutorPasswordHash,
+    },
     create: {
       email: 'prosecutor.mehta@nyayavault.gov.in',
       fullName: 'Public Prosecutor K. Mehta',
-      passwordHash: DEV_HASH_PLACEHOLDER,
+      passwordHash: prosecutorPasswordHash,
       role: RoleName.PROSECUTOR,
     },
   });
 
-  console.log(`Seeded 4 development users (${adminUser.email}, ${ioUser.email}, ${supervisorUser.email}, ${prosecutorUser.email})`);
+  console.log(`Seeded 4 development users with Argon2 password hashes:`);
+  console.log(`  - ${adminUser.email} (Role: ${adminUser.role})`);
+  console.log(`  - ${ioUser.email} (Role: ${ioUser.role})`);
+  console.log(`  - ${supervisorUser.email} (Role: ${supervisorUser.role})`);
+  console.log(`  - ${prosecutorUser.email} (Role: ${prosecutorUser.role})`);
 
   // 2. Seed Sample Cases
   const sampleCase1 = await prisma.case.upsert({
