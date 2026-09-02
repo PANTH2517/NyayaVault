@@ -9,6 +9,23 @@ import {
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 
+import * as fs from 'fs';
+import * as path from 'path';
+const envPath = path.resolve(__dirname, '..', '.env');
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, { encoding: 'utf8' });
+  envContent.split(/\r?\n/).forEach(line => {
+    const match = line.match(/^\s*([\w_]+)\s*=\s*(.*)\s*$/);
+    if (match) {
+      const key = match[1];
+      let val = match[2];
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith('\'') && val.endsWith('\''))) {
+        val = val.slice(1, -1);
+      }
+      process.env[key] = val;
+    }
+  });
+}
 const prisma = new PrismaClient();
 
 async function main() {

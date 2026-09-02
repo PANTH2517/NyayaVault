@@ -55,17 +55,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 export const api = {
   // Auth
   async login(email: string, passwordHash: string) {
-    const data = await request<{
-      user: User;
-      tokens: { accessToken: string; refreshToken: string };
-    }>('/auth/login', {
+    const data = await request<any>('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password: passwordHash }),
     });
 
-    localStorage.setItem('nyaya_access_token', data.tokens.accessToken);
-    localStorage.setItem('nyaya_refresh_token', data.tokens.refreshToken);
+    const accessToken = data.accessToken || data.tokens?.accessToken;
+    const refreshToken = data.refreshToken || data.tokens?.refreshToken;
+
+    if (accessToken) localStorage.setItem('nyaya_access_token', accessToken);
+    if (refreshToken) localStorage.setItem('nyaya_refresh_token', refreshToken);
     return data;
   },
 

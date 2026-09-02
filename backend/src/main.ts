@@ -13,8 +13,10 @@ async function bootstrap() {
     }),
   );
 
+  const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
+
   app.enableCors({
-    origin: true,
+    origin: allowedOrigin,
     credentials: true,
   });
 
