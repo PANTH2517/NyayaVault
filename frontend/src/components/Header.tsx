@@ -47,7 +47,7 @@ export const Header: React.FC = () => {
                 key={r}
                 onClick={() => switchDemoRole(r)}
                 disabled={loading || isActive}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all duration-micro ease-cinematic active:scale-[0.97] cursor-pointer ${
                   isActive
                     ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
                     : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
@@ -81,7 +81,7 @@ export const Header: React.FC = () => {
 
           <button
             onClick={logout}
-            className="p-2 rounded-lg bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-700 transition-colors cursor-pointer"
+            className="p-2 rounded-lg bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-700 transition-all duration-micro ease-cinematic active:scale-[0.95] cursor-pointer"
             title="Logout session"
           >
             <LogOut className="w-4 h-4" />

@@ -11,6 +11,7 @@ import { SearchFilterView } from './components/views/SearchFilterView';
 import { ApprovalsView } from './components/views/ApprovalsView';
 import { IncidentsView } from './components/views/IncidentsView';
 import { AuditTrailView } from './components/views/AuditTrailView';
+import { MotionPage } from './components/motion/MotionPage';
 
 const MainLayout: React.FC = () => {
   const { user, loading } = useAuth();
@@ -62,35 +63,37 @@ const MainLayout: React.FC = () => {
 
         <main className="flex-1 overflow-y-auto p-6 max-w-7xl w-full mx-auto">
           {/* Sub-view drilldowns priority over main tab */}
-          {selectedDocId ? (
-            <DocumentDetailView
-              documentId={selectedDocId}
-              onBack={() => setSelectedDocId(null)}
-            />
-          ) : selectedCaseId ? (
-            <CaseDetailView
-              caseId={selectedCaseId}
-              onBack={() => setSelectedCaseId(null)}
-              onSelectDocument={handleSelectDocument}
-            />
-          ) : (
-            <>
-              {currentTab === 'dashboard' && (
-                <DashboardView onNavigate={handleTabChange} />
-              )}
-              {currentTab === 'cases' && (
-                <CasesView onSelectCase={handleSelectCase} />
-              )}
-              {currentTab === 'search' && (
-                <SearchFilterView onSelectDocument={handleSelectDocument} />
-              )}
-              {currentTab === 'approvals' && (
-                <ApprovalsView onSelectDocument={handleSelectDocument} />
-              )}
-              {currentTab === 'incidents' && <IncidentsView />}
-              {currentTab === 'audit' && <AuditTrailView />}
-            </>
-          )}
+          <MotionPage viewKey={selectedDocId || selectedCaseId || currentTab}>
+            {selectedDocId ? (
+              <DocumentDetailView
+                documentId={selectedDocId}
+                onBack={() => setSelectedDocId(null)}
+              />
+            ) : selectedCaseId ? (
+              <CaseDetailView
+                caseId={selectedCaseId}
+                onBack={() => setSelectedCaseId(null)}
+                onSelectDocument={handleSelectDocument}
+              />
+            ) : (
+              <>
+                {currentTab === 'dashboard' && (
+                  <DashboardView onNavigate={handleTabChange} />
+                )}
+                {currentTab === 'cases' && (
+                  <CasesView onSelectCase={handleSelectCase} />
+                )}
+                {currentTab === 'search' && (
+                  <SearchFilterView onSelectDocument={handleSelectDocument} />
+                )}
+                {currentTab === 'approvals' && (
+                  <ApprovalsView onSelectDocument={handleSelectDocument} />
+                )}
+                {currentTab === 'incidents' && <IncidentsView />}
+                {currentTab === 'audit' && <AuditTrailView />}
+              </>
+            )}
+          </MotionPage>
         </main>
       </div>
 

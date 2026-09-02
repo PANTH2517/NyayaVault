@@ -64,10 +64,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               key={item.id}
               onClick={() => onTabChange(item.id as ViewTab)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-standard ease-cinematic active:scale-[0.985] cursor-pointer ${
                 isActive
-                  ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold shadow-sm translate-x-0.5'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 hover:translate-x-0.5'
               }`}
             >
               <div className="flex items-center gap-3">

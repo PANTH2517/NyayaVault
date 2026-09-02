@@ -16,10 +16,14 @@ import {
   AlertTriangle,
   Send,
   LockKeyhole,
+  ChevronRight,
+  FileCode,
+  AlertCircle,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Document, DocumentVersion, Approval, DocumentStatus } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { MotionCard, MotionReveal, MotionStagger, MotionStatus } from '../motion';
 
 interface DocumentDetailViewProps {
   documentId: string;
@@ -181,31 +185,37 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
   };
 
   if (loading) {
-    return <div className="text-center py-20 text-xs text-slate-400">Loading Document Metadata...</div>;
-  }
-
-  if (error || !doc) {
     return (
-      <div className="p-6 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs space-y-3">
-        <div>{error || 'Document not found'}</div>
-        <button onClick={onBack} className="px-3 py-1 rounded bg-slate-800 text-slate-200">
-          Back to Case
-        </button>
+      <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-3 text-slate-400 text-xs font-sans">
+        <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center animate-status-pulse">
+          <Shield className="w-5 h-5 text-amber-400" />
+        </div>
+        <p className="font-semibold text-slate-300">Loading Digital Evidence Metadata...</p>
       </div>
     );
   }
 
+  if (error || !doc) {
+    return (
+      <MotionReveal className="p-6 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs space-y-4 font-sans">
+        <div className="flex items-center gap-3">
+          <AlertCircle className="w-6 h-6 shrink-0" />
+          <div>
+            <h3 className="font-bold text-sm text-rose-300">Document Retrieval Failed</h3>
+            <p className="text-rose-400/90">{error || 'Document record not found'}</p>
+          </div>
+        </div>
+        <button
+          onClick={onBack}
+          className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+        >
+          Return to Case Overview
+        </button>
+      </MotionReveal>
+    );
+  }
+
   const latestVersion = versions.length > 0 ? versions[versions.length - 1] : null;
-
-  const statusBadges: Record<DocumentStatus, { label: string; style: string; icon: any }> = {
-    DRAFT: { label: 'DRAFT', style: 'bg-slate-500/20 text-slate-300 border-slate-500/30', icon: Clock },
-    UNDER_REVIEW: { label: 'UNDER REVIEW', style: 'bg-amber-500/20 text-amber-300 border-amber-500/30', icon: Clock },
-    APPROVED: { label: 'APPROVED', style: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', icon: CheckCircle2 },
-    SEALED: { label: 'SEALED', style: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30', icon: Lock },
-  };
-
-  const currentSt = statusBadges[doc.currentStatus];
-  const StatusIcon = currentSt.icon;
 
   const canSubmit = doc.currentStatus === 'DRAFT' && (user?.role === 'ADMIN' || user?.role === 'INVESTIGATING_OFFICER');
   const canApprove = doc.currentStatus === 'UNDER_REVIEW' && (user?.role === 'ADMIN' || user?.role === 'SUPERVISOR');
@@ -214,291 +224,423 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
 
   return (
     <div className="space-y-6 font-sans">
-      {/* Back Button */}
-      <button
-        onClick={onBack}
-        className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-amber-400 transition-colors cursor-pointer"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        <span>Back to Case Overview</span>
-      </button>
+      {/* Back Navigation Bar */}
+      <MotionReveal delayMs={0}>
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-amber-400 transition-colors duration-micro cursor-pointer group"
+        >
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+          <span>Back to Case Overview</span>
+        </button>
+      </MotionReveal>
 
-      {/* CRITICAL TAMPER ALERT BANNER (Prominently displayed upon hash failure) */}
-      {integrityState === 'COMPROMISED' && (
-        <div className="p-5 rounded-2xl bg-rose-500/15 border-2 border-rose-500 text-rose-200 space-y-2 shadow-2xl animate-pulse">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-rose-500 text-slate-950 font-bold">
-              <ShieldAlert className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="text-base font-extrabold tracking-wide text-rose-400">
-                DOCUMENT INTEGRITY COMPROMISED
-              </h3>
-              <p className="text-xs font-semibold text-rose-200">
-                Trusted SHA-256 does not match stored document bytes.
-              </p>
-            </div>
-          </div>
-          <div className="pt-2 border-t border-rose-500/30 text-xs font-mono space-y-1 text-rose-300">
-            <div>&bull; ACCESS BLOCKED: Content retrieval aborted by NestJS backend security interceptor.</div>
-            <div>&bull; SECURITY INCIDENT CREATED: A critical security incident has been escalated.</div>
-            {tamperErrorAlert && (
-              <div className="text-[11px] bg-slate-950/80 p-2 rounded border border-rose-500/40 text-rose-300">
-                {tamperErrorAlert}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Main Document Details Card */}
-      <div className="p-6 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-6 shadow-xl">
+      {/* 1. DOCUMENT IDENTITY HEADER */}
+      <MotionReveal delayMs={50} className="p-6 rounded-2xl layer-shell border space-y-4 shadow-xl">
         <div className="flex items-start justify-between flex-wrap gap-4">
-          <div className="space-y-1">
+          <div className="space-y-2 max-w-3xl">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+              <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800 tracking-wider">
                 {doc.documentType}
               </span>
-              <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+              <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
                 {doc.classification}
               </span>
               {doc.case && (
-                <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-                  Case: {doc.case.caseNumber}
+                <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800">
+                  Case #{doc.case.caseNumber}
                 </span>
               )}
             </div>
 
-            <h2 className="text-2xl font-extrabold text-white tracking-tight">{doc.title}</h2>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              {doc.title}
+            </h1>
           </div>
 
-          {/* Status Badge & Integrity Badge */}
           <div className="flex items-center gap-3 shrink-0">
-            {/* Document Lifecycle Status Badge */}
-            <span
-              className={`text-xs font-bold px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${currentSt.style}`}
-            >
-              <StatusIcon className="w-4 h-4" />
-              {currentSt.label}
-            </span>
+            {/* Document Lifecycle Badge */}
+            <MotionStatus status={doc.currentStatus} />
 
-            {/* Explicit Document Integrity State Badge */}
+            {/* Verification State Badge */}
             {integrityState === 'VERIFIED' && (
-              <span className="text-xs font-bold px-3 py-1.5 rounded-full border bg-emerald-500/20 text-emerald-300 border-emerald-500/40 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                VERIFIED
-              </span>
+              <MotionStatus status="VERIFIED" label="BYTE VERIFIED" />
             )}
             {integrityState === 'NOT_YET_VERIFIED' && (
-              <span className="text-xs font-bold px-3 py-1.5 rounded-full border bg-slate-800 text-slate-400 border-slate-700 flex items-center gap-1.5">
-                <Shield className="w-4 h-4" />
-                NOT YET VERIFIED
-              </span>
+              <MotionStatus status="NOT_YET_VERIFIED" label="UNVERIFIED SESSION" />
             )}
             {integrityState === 'COMPROMISED' && (
-              <span className="text-xs font-bold px-3 py-1.5 rounded-full border bg-rose-500/20 text-rose-400 border-rose-500/50 flex items-center gap-1.5 animate-pulse">
-                <ShieldAlert className="w-4 h-4" />
-                COMPROMISED
-              </span>
+              <MotionStatus status="COMPROMISED" label="TAMPER COMPROMISED" />
             )}
           </div>
         </div>
 
-        {/* SHA-256 Trusted Hash Display Box */}
-        {latestVersion && (
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-400 flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-amber-400" />
-                Trusted SHA-256 Hash (Version {latestVersion.versionNumber})
-              </span>
-              <button
-                onClick={() => handleCopyHash(latestVersion.sha256Hash)}
-                className="text-[11px] text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                {copiedHash === latestVersion.sha256Hash ? (
-                  <>
-                    <Check className="w-3 h-3 text-emerald-400" />
-                    <span>Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3 h-3" />
-                    <span>Copy Full Hash</span>
-                  </>
-                )}
-              </button>
-            </div>
-            <div className="font-mono text-xs text-amber-300/90 break-all select-all">
-              {latestVersion.sha256Hash}
-            </div>
-          </div>
-        )}
+        {/* Conceptual Chain of Trust Visual Connector Bar */}
+        <div className="pt-3 border-t border-slate-800/80 flex items-center gap-2 overflow-x-auto text-[10px] font-mono text-slate-400 scrollbar-none">
+          <span className="text-slate-300 font-bold flex items-center gap-1">
+            <FileText className="w-3.5 h-3.5 text-amber-400" /> DOCUMENT
+          </span>
+          <ChevronRight className="w-3 h-3 text-slate-600 shrink-0" />
+          <span className="text-slate-300 font-bold flex items-center gap-1">
+            <FileCode className="w-3.5 h-3.5 text-sky-400" /> VERSION v{latestVersion?.versionNumber || 1}
+          </span>
+          <ChevronRight className="w-3 h-3 text-slate-600 shrink-0" />
+          <span className="text-slate-300 font-bold flex items-center gap-1">
+            <Lock className="w-3.5 h-3.5 text-amber-400" /> SHA-256 CHECKSUM
+          </span>
+          <ChevronRight className="w-3 h-3 text-slate-600 shrink-0" />
+          <span className={`font-bold flex items-center gap-1 ${
+            integrityState === 'VERIFIED'
+              ? 'text-emerald-400'
+              : integrityState === 'COMPROMISED'
+              ? 'text-rose-400'
+              : 'text-amber-400'
+          }`}>
+            <ShieldCheck className="w-3.5 h-3.5" />
+            {integrityState === 'VERIFIED' ? 'INTEGRITY MATCH' : integrityState === 'COMPROMISED' ? 'MISMATCH DETECTED' : 'PENDING VERIFICATION'}
+          </span>
+        </div>
+      </MotionReveal>
 
-        {/* Action Buttons Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
-          <div className="flex items-center gap-2 flex-wrap">
+      {/* 2. TRUST / INTEGRITY HERO */}
+      <MotionReveal delayMs={100}>
+        <div
+          className={`p-6 rounded-2xl border transition-all duration-standard ease-cinematic shadow-2xl ${
+            integrityState === 'VERIFIED'
+              ? 'bg-emerald-950/20 border-emerald-500/40'
+              : integrityState === 'COMPROMISED'
+              ? 'bg-rose-950/25 border-2 border-rose-500 shadow-rose-500/20 animate-status-pulse'
+              : 'layer-panel border-slate-800'
+          }`}
+        >
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div className="flex items-start gap-4">
+              <div
+                className={`p-3 rounded-2xl border shrink-0 ${
+                  integrityState === 'VERIFIED'
+                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+                    : integrityState === 'COMPROMISED'
+                    ? 'bg-rose-500 text-slate-950 font-bold border-rose-400 shadow-lg shadow-rose-500/30'
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}
+              >
+                {integrityState === 'VERIFIED' ? (
+                  <ShieldCheck className="w-8 h-8 text-emerald-400" />
+                ) : integrityState === 'COMPROMISED' ? (
+                  <ShieldAlert className="w-8 h-8 text-slate-950" />
+                ) : (
+                  <Shield className="w-8 h-8 text-slate-400" />
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className={`text-lg font-extrabold tracking-tight ${
+                    integrityState === 'VERIFIED'
+                      ? 'text-emerald-300'
+                      : integrityState === 'COMPROMISED'
+                      ? 'text-rose-400'
+                      : 'text-white'
+                  }`}>
+                    {integrityState === 'VERIFIED' && 'INTEGRITY VERIFIED — MATCH CONFIRMED'}
+                    {integrityState === 'COMPROMISED' && 'DOCUMENT INTEGRITY COMPROMISED — ACCESS BLOCKED'}
+                    {integrityState === 'NOT_YET_VERIFIED' && 'DIGITAL EVIDENCE TRUST SCREEN'}
+                  </h2>
+                </div>
+
+                <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                  {integrityState === 'VERIFIED' &&
+                    `Version ${latestVersion?.versionNumber} byte array hash strictly matches trusted SHA-256 fingerprint in system ledger.`}
+                  {integrityState === 'COMPROMISED' &&
+                    `Trusted SHA-256 fingerprint does not match stored document bytes. Content retrieval was aborted by NestJS security interceptor.`}
+                  {integrityState === 'NOT_YET_VERIFIED' &&
+                    `Click 'Download & Verify Byte Integrity' to compute live SHA-256 against stored document file bytes.`}
+                </p>
+
+                {integrityState === 'COMPROMISED' && (
+                  <div className="pt-2 font-mono text-[11px] space-y-1 text-rose-300">
+                    <div>&bull; ACCESS BLOCKED: Download stream terminated due to checksum mismatch.</div>
+                    <div>&bull; INCIDENT LOGGED: A critical security incident has been escalated in backend.</div>
+                    {tamperErrorAlert && (
+                      <div className="bg-slate-950/90 p-2 rounded-lg border border-rose-500/50 text-rose-300 text-[10px] mt-1">
+                        {tamperErrorAlert}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Action in Hero */}
             {latestVersion && (
               <button
                 onClick={() => handleDownloadAndVerify(latestVersion)}
                 disabled={downloading}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs shadow-lg transition-all duration-micro ease-cinematic active:scale-[0.97] cursor-pointer disabled:opacity-50 shrink-0 ${
+                  integrityState === 'COMPROMISED'
+                    ? 'bg-rose-500 hover:bg-rose-400 text-slate-950 shadow-rose-500/20'
+                    : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+                }`}
               >
                 <Download className="w-4 h-4" />
-                <span>{downloading ? 'Verifying Hashing...' : 'Download & Verify Byte Integrity'}</span>
-              </button>
-            )}
-
-            {canRevise && (
-              <button
-                onClick={() => setIsRevisionOpen(true)}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition-all cursor-pointer"
-              >
-                <Upload className="w-4 h-4 text-sky-400" />
-                <span>Upload New Revision</span>
-              </button>
-            )}
-          </div>
-
-          {/* Workflow Transition Action Buttons */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {canSubmit && (
-              <button
-                onClick={handleSubmitForReview}
-                disabled={actionLoading}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 font-bold text-xs cursor-pointer transition-all disabled:opacity-50"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Submit for Review</span>
-              </button>
-            )}
-
-            {canApprove && (
-              <button
-                onClick={() => setIsApproveOpen(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 font-bold text-xs cursor-pointer transition-all"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Approve Version</span>
-              </button>
-            )}
-
-            {canSeal && (
-              <button
-                onClick={handleSeal}
-                disabled={actionLoading}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 font-bold text-xs cursor-pointer transition-all disabled:opacity-50"
-              >
-                <LockKeyhole className="w-3.5 h-3.5" />
-                <span>Seal Document</span>
+                <span>
+                  {downloading
+                    ? 'Verifying Byte Integrity...'
+                    : integrityState === 'COMPROMISED'
+                    ? 'Re-Verify Byte Integrity'
+                    : 'Download & Verify Byte Integrity'}
+                </span>
               </button>
             )}
           </div>
         </div>
-      </div>
+      </MotionReveal>
 
-      {/* Version History Table/List */}
-      <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-6 space-y-4 shadow-lg">
+      {/* 3. CRYPTOGRAPHIC VERIFICATION PANEL */}
+      {latestVersion && (
+        <MotionReveal delayMs={150} className="p-6 rounded-2xl layer-panel border space-y-4 shadow-xl">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Lock className="w-4 h-4 text-amber-400" />
+              Cryptographic SHA-256 Fingerprint (Version {latestVersion.versionNumber})
+            </h3>
+
+            <button
+              onClick={() => handleCopyHash(latestVersion.sha256Hash)}
+              className="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+            >
+              {copiedHash === latestVersion.sha256Hash ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-400">Copied to Clipboard!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy Full SHA-256 Hash</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+            <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+              Trusted Database SHA-256 Hash:
+            </div>
+            <div className="font-mono text-xs sm:text-sm text-amber-300 tracking-wider break-all select-all leading-relaxed">
+              {latestVersion.sha256Hash}
+            </div>
+          </div>
+
+          {/* Cryptographic Comparison Pipeline Indicator */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 font-mono text-[11px]">
+            <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 text-center">
+              <div className="text-[9px] text-slate-500 uppercase">Input Version</div>
+              <div className="font-bold text-slate-200 mt-0.5">v{latestVersion.versionNumber}</div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 text-center">
+              <div className="text-[9px] text-slate-500 uppercase">Algorithm</div>
+              <div className="font-bold text-amber-400 mt-0.5">SHA-256</div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 text-center">
+              <div className="text-[9px] text-slate-500 uppercase">File Size</div>
+              <div className="font-bold text-slate-200 mt-0.5">
+                {(Number(latestVersion.fileSizeBytes) / 1024).toFixed(1)} KB
+              </div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 text-center">
+              <div className="text-[9px] text-slate-500 uppercase">Checksum Result</div>
+              <div className={`font-bold mt-0.5 ${
+                integrityState === 'VERIFIED'
+                  ? 'text-emerald-400'
+                  : integrityState === 'COMPROMISED'
+                  ? 'text-rose-400'
+                  : 'text-slate-400'
+              }`}>
+                {integrityState === 'VERIFIED' ? 'MATCH' : integrityState === 'COMPROMISED' ? 'MISMATCH' : 'UNCHECKED'}
+              </div>
+            </div>
+          </div>
+        </MotionReveal>
+      )}
+
+      {/* 4. WORKFLOW ACTION TOOLBAR */}
+      <MotionReveal delayMs={200} className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl layer-panel border">
+        <div className="flex items-center gap-2 flex-wrap">
+          {canRevise && (
+            <button
+              onClick={() => setIsRevisionOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition-all duration-micro ease-cinematic active:scale-[0.97] cursor-pointer"
+            >
+              <Upload className="w-4 h-4 text-sky-400" />
+              <span>Upload New Revision</span>
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {canSubmit && (
+            <button
+              onClick={handleSubmitForReview}
+              disabled={actionLoading}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 font-bold text-xs cursor-pointer transition-all duration-micro ease-cinematic active:scale-[0.97] disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Submit for Review</span>
+            </button>
+          )}
+
+          {canApprove && (
+            <button
+              onClick={() => setIsApproveOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 font-bold text-xs cursor-pointer transition-all duration-micro ease-cinematic active:scale-[0.97]"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Approve Version</span>
+            </button>
+          )}
+
+          {canSeal && (
+            <button
+              onClick={handleSeal}
+              disabled={actionLoading}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 font-bold text-xs cursor-pointer transition-all duration-micro ease-cinematic active:scale-[0.97] disabled:opacity-50"
+            >
+              <LockKeyhole className="w-3.5 h-3.5" />
+              <span>Seal Document</span>
+            </button>
+          )}
+        </div>
+      </MotionReveal>
+
+      {/* 5. VERSION HISTORY (CHAIN-OF-CUSTODY TIMELINE) */}
+      <MotionReveal delayMs={250} className="rounded-2xl layer-panel border p-6 space-y-4 shadow-xl">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold text-slate-200 flex items-center gap-2">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
             <History className="w-5 h-5 text-amber-400" />
-            Immutable Version History ({versions.length})
+            Chain-of-Custody Immutable Versions ({versions.length})
           </h3>
           <span className="text-[11px] text-slate-500">
-            Existing versions are never overwritten
+            Append-Only Audit Structure
           </span>
         </div>
 
-        <div className="space-y-3">
+        <MotionStagger staggerMs={50} className="space-y-3 relative before:absolute before:left-6 before:top-4 before:bottom-4 before:w-0.5 before:bg-slate-800">
           {versions.map((ver) => (
             <div
               key={ver.id}
-              className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs"
+              className={`relative pl-10 p-4 rounded-xl border transition-all duration-standard ease-cinematic ${
+                ver.isCompromised
+                  ? 'bg-rose-950/20 border-rose-500/50 shadow-md shadow-rose-500/10'
+                  : ver.id === doc.currentVersionId
+                  ? 'bg-slate-950 border-amber-500/40 shadow-sm'
+                  : 'bg-slate-950/80 border-slate-800'
+              }`}
             >
-              <div className="space-y-1 max-w-lg">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                    Version {ver.versionNumber}
-                  </span>
-                  {ver.isCompromised && (
-                    <span className="font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 flex items-center gap-1 text-[10px]">
-                      <AlertTriangle className="w-3 h-3" />
-                      COMPROMISED
+              {/* Timeline Bullet Node */}
+              <div className={`absolute left-4 top-5 w-4 h-4 rounded-full border-2 -translate-x-1/2 flex items-center justify-center ${
+                ver.isCompromised
+                  ? 'bg-rose-500 border-rose-400 animate-status-pulse'
+                  : ver.id === doc.currentVersionId
+                  ? 'bg-amber-500 border-amber-300'
+                  : 'bg-slate-900 border-slate-700'
+              }`} />
+
+              <div className="flex flex-wrap items-start justify-between gap-3 text-xs">
+                <div className="space-y-1.5 max-w-xl">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
+                      Version {ver.versionNumber}
                     </span>
+
+                    {ver.id === doc.currentVersionId && (
+                      <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30">
+                        CURRENT ACTIVE
+                      </span>
+                    )}
+
+                    {ver.isCompromised && (
+                      <span className="font-bold text-rose-400 bg-rose-500/20 px-2 py-0.5 rounded border border-rose-500/40 flex items-center gap-1 text-[10px]">
+                        <AlertTriangle className="w-3 h-3" />
+                        COMPROMISED
+                      </span>
+                    )}
+
+                    <span className="text-[11px] text-slate-400">
+                      by {ver.createdBy?.fullName || 'Officer'} &bull;{' '}
+                      {new Date(ver.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+
+                  {ver.changeDescription && (
+                    <p className="text-slate-300 italic text-[11px] bg-slate-900/60 p-2 rounded border border-slate-800/80">
+                      "{ver.changeDescription}"
+                    </p>
                   )}
-                  <span className="text-[11px] text-slate-400">
-                    by {ver.createdBy?.fullName || 'Officer'} &bull;{' '}
-                    {new Date(ver.createdAt).toLocaleString()}
+
+                  <div className="font-mono text-[10px] text-slate-400 truncate flex items-center gap-1.5">
+                    <span className="text-slate-500">SHA-256:</span>
+                    <span className="text-slate-300 truncate">{ver.sha256Hash}</span>
+                    <button
+                      onClick={() => handleCopyHash(ver.sha256Hash)}
+                      className="text-amber-400 hover:text-amber-300 ml-1 cursor-pointer"
+                      title="Copy Hash"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-slate-400 font-mono text-[11px]">
+                    {(Number(ver.fileSizeBytes) / 1024).toFixed(1)} KB
                   </span>
+
+                  <button
+                    onClick={() => handleDownloadAndVerify(ver)}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-semibold border border-slate-700 transition-all duration-micro ease-cinematic active:scale-[0.97] cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Download v{ver.versionNumber}</span>
+                  </button>
                 </div>
-
-                {ver.changeDescription && (
-                  <p className="text-slate-400 italic text-[11px]">
-                    "{ver.changeDescription}"
-                  </p>
-                )}
-
-                <div className="font-mono text-[10px] text-slate-500 truncate">
-                  SHA-256: <span className="text-slate-400">{ver.sha256Hash}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <span className="text-slate-500 font-mono text-[11px]">
-                  {(Number(ver.fileSizeBytes) / 1024).toFixed(1)} KB
-                </span>
-
-                <button
-                  onClick={() => handleDownloadAndVerify(ver)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Download v{ver.versionNumber}</span>
-                </button>
               </div>
             </div>
           ))}
-        </div>
-      </div>
+        </MotionStagger>
+      </MotionReveal>
 
-      {/* Approval History Timeline */}
-      <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-6 space-y-4 shadow-lg">
-        <h3 className="text-base font-bold text-slate-200 flex items-center gap-2">
+      {/* 6. APPROVAL AUDIT HISTORY */}
+      <MotionReveal delayMs={300} className="rounded-2xl layer-panel border p-6 space-y-4 shadow-xl">
+        <h3 className="text-base font-bold text-white flex items-center gap-2">
           <CheckCircle2 className="w-5 h-5 text-emerald-400" />
           Approval Audit History ({approvals.length})
         </h3>
 
         {approvals.length === 0 ? (
-          <p className="text-xs text-slate-500 italic py-2">No approval events recorded yet.</p>
+          <p className="text-xs text-slate-500 italic py-2">No approval events recorded for this document.</p>
         ) : (
           <div className="space-y-3">
             {approvals.map((app) => (
               <div
                 key={app.id}
-                className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 text-xs space-y-1.5"
+                className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 text-xs space-y-2"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                       Bound to Version {app.version?.versionNumber || '?'}
                     </span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                        statusBadges[app.status]?.style || 'bg-slate-800 text-slate-300'
-                      }`}
-                    >
-                      {app.status}
-                    </span>
+                    <MotionStatus status={app.status} />
                   </div>
 
-                  <span className="text-[10px] text-slate-500">
+                  <span className="text-[10px] text-slate-400 font-mono">
                     Requested: {new Date(app.requestedAt).toLocaleString()}
                   </span>
                 </div>
 
                 <div className="text-slate-300 text-xs">
-                  Requested by: <strong className="text-slate-200">{app.requestedBy?.fullName}</strong>{' '}
-                  ({app.requestedBy?.role})
+                  Requested by: <strong className="text-slate-200">{app.requestedBy?.fullName}</strong> ({app.requestedBy?.role})
                   {app.approvedBy && (
                     <span>
                       {' '}&bull; Approved by:{' '}
@@ -508,7 +650,7 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
                 </div>
 
                 {app.comments && (
-                  <p className="text-slate-400 text-[11px] italic bg-slate-900/60 p-2 rounded border border-slate-800">
+                  <p className="text-slate-300 text-[11px] italic bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
                     Comments: "{app.comments}"
                   </p>
                 )}
@@ -516,12 +658,12 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
             ))}
           </div>
         )}
-      </div>
+      </MotionReveal>
 
       {/* Revision Upload Modal */}
       {isRevisionOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5 shadow-2xl">
+          <div className="max-w-md w-full rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5 shadow-2xl animate-fade-in-scale">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
               <Upload className="w-5 h-5 text-sky-400" />
               Upload New Revision (Version {versions.length + 1})
@@ -574,7 +716,7 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
       {/* Approval Modal */}
       {isApproveOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5 shadow-2xl">
+          <div className="max-w-md w-full rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5 shadow-2xl animate-fade-in-scale">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5 text-emerald-400" />
               Approve Document Version {latestVersion?.versionNumber}
@@ -582,7 +724,7 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
 
             <p className="text-xs text-slate-400 leading-relaxed">
               Approval will be strictly bound to Version ID{' '}
-              <code className="bg-slate-950 px-1 py-0.5 rounded text-amber-400 font-mono">
+              <code className="bg-slate-950 px-1.5 py-0.5 rounded text-amber-400 font-mono">
                 {doc.currentVersionId}
               </code>
               . Approval of this version does not auto-approve future revisions.
