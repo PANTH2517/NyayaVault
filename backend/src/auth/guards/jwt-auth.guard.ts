@@ -1,9 +1,13 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -14,20 +18,31 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const token = authHeader.split(' ')[1];
+    let payload: any;
     try {
       const secret = process.env.JWT_SECRET || 'dev_jwt_secret_key_for_local_testing_only';
-      const payload = await this.jwtService.verifyAsync(token, { secret });
-      
-      // Attach user payload to request
-      request.user = {
-        userId: payload.sub,
-        email: payload.email,
-        role: payload.role,
-      };
-
-      return true;
+      payload = await this.jwtService.verifyAsync(token, { secret });
     } catch (err) {
       throw new UnauthorizedException('Invalid or expired access token');
     }
+
+    // Verify account active status in DB to ensure immediate deactivation enforcement
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, email: true, role: true, isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('User account is inactive or disabled');
+    }
+
+    // Attach user payload to request
+    request.user = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    return true;
   }
 }

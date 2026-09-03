@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
   Briefcase,
@@ -7,7 +8,11 @@ import {
   AlertTriangle,
   History,
   ShieldCheck,
+  BookOpen,
+  Users,
+  ShieldAlert,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export type ViewTab =
   | 'dashboard'
@@ -15,7 +20,10 @@ export type ViewTab =
   | 'search'
   | 'approvals'
   | 'incidents'
-  | 'audit';
+  | 'audit'
+  | 'about'
+  | 'users'
+  | 'security-controls';
 
 interface SidebarProps {
   currentTab: ViewTab;
@@ -30,70 +38,108 @@ export const Sidebar: React.FC<SidebarProps> = ({
   openIncidentsCount = 0,
   underReviewCount = 0,
 }) => {
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'cases', label: 'Cases & Records', icon: Briefcase },
-    { id: 'search', label: 'Search & Filter', icon: Search },
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+
+  const sections = [
     {
-      id: 'approvals',
-      label: 'Approvals Queue',
-      icon: CheckSquare,
-      badge: underReviewCount > 0 ? underReviewCount : null,
-      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+      title: 'WORKSPACE',
+      items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'cases', label: 'Cases', icon: Briefcase },
+        { id: 'search', label: 'Evidence Files', icon: Search },
+        {
+          id: 'approvals',
+          label: 'Approvals',
+          icon: CheckSquare,
+          badge: underReviewCount > 0 ? underReviewCount : null,
+          badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+        },
+      ],
     },
     {
-      id: 'incidents',
-      label: 'Security Incidents',
-      icon: AlertTriangle,
-      badge: openIncidentsCount > 0 ? openIncidentsCount : null,
-      badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+      title: 'SECURITY',
+      items: [
+        { id: 'audit', label: 'Audit Trail', icon: History },
+        {
+          id: 'incidents',
+          label: 'Security Incidents',
+          icon: AlertTriangle,
+          badge: openIncidentsCount > 0 ? openIncidentsCount : null,
+          badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+        },
+      ],
     },
-    { id: 'audit', label: 'Audit Trail & Integrity', icon: History },
+    {
+      title: 'HELP',
+      items: [{ id: 'about', label: 'How It Works', icon: BookOpen }],
+    },
   ];
 
+  if (isAdmin) {
+    sections.push({
+      title: 'ADMINISTRATION',
+      items: [
+        { id: 'users', label: 'User Management', icon: Users },
+        { id: 'security-controls', label: 'Security Controls', icon: ShieldAlert },
+      ],
+    });
+  }
+
   return (
-    <aside className="w-64 bg-slate-900/60 border-r border-slate-800 p-4 space-y-6 flex flex-col justify-between shrink-0 font-sans">
-      <div className="space-y-1">
-        <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-          Navigation
-        </div>
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => onTabChange(item.id as ViewTab)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-standard ease-cinematic active:scale-[0.985] cursor-pointer ${
-                isActive
-                  ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold shadow-sm translate-x-0.5'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 hover:translate-x-0.5'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
-                <span>{item.label}</span>
-              </div>
-              {item.badge && (
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${item.badgeColor}`}
+    <aside className="w-64 bg-slate-900/80 border-r border-slate-800 p-4 flex flex-col justify-between shrink-0 font-sans backdrop-blur-xl z-20">
+      <div className="space-y-5">
+        {sections.map((section) => (
+          <div key={section.title} className="space-y-1">
+            <div className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-mono">
+              {section.title}
+            </div>
+            {section.items.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => onTabChange(item.id as ViewTab)}
+                  className={`relative w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer group ${
+                    isActive ? 'text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+                  }`}
                 >
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeSidebarTab"
+                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      className="absolute inset-0 bg-amber-500/10 border border-amber-500/30 rounded-xl shadow-sm"
+                    />
+                  )}
+
+                  <div className="relative z-10 flex items-center gap-2.5">
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'}`} />
+                    <span>{item.label}</span>
+                  </div>
+
+                  {item.badge && (
+                    <span
+                      className={`relative z-10 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${item.badgeColor}`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
-      {/* System Security Notice Footer */}
-      <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 text-slate-400 space-y-2 text-[11px]">
-        <div className="flex items-center gap-2 text-emerald-400 font-semibold">
-          <ShieldCheck className="w-4 h-4" />
+      {/* Security Status Badge Footer */}
+      <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 text-slate-400 space-y-1.5 text-xs font-sans">
+        <div className="flex items-center gap-2 text-emerald-400 font-bold text-[11px]">
+          <ShieldCheck className="w-4 h-4 shrink-0" />
           <span>SHA-256 Protected</span>
         </div>
         <p className="text-[10px] leading-relaxed text-slate-500">
-          All document modifications generate immutable versions and hash-chained audit events.
+          Case-based access controls and hash-chained audit logging active.
         </p>
       </div>
     </aside>

@@ -201,14 +201,21 @@ export class AuditChainService {
     }
   }
 
-  /**
-   * Fetch audit events with role & CBAC authorization filtering
-   */
-  async getAuditEventsForUser(user: UserPayload) {
+  async getAuditEventsForUser(user: UserPayload, startDate?: string, endDate?: string) {
+    const createdAtFilter: any = {};
+    if (startDate) {
+      createdAtFilter.gte = new Date(startDate);
+    }
+    if (endDate) {
+      createdAtFilter.lte = new Date(endDate);
+    }
+    const hasDateFilter = Object.keys(createdAtFilter).length > 0;
+
     let events;
 
     if (user.role === RoleName.ADMIN) {
       events = await this.prisma.auditEvent.findMany({
+        where: hasDateFilter ? { createdAt: createdAtFilter } : undefined,
         orderBy: { sequenceNumber: 'desc' },
         take: 100,
         include: {
@@ -224,13 +231,15 @@ export class AuditChainService {
       });
       const assignedCaseIds = assignments.map((a) => a.caseId);
 
+      const baseOrClause = [
+        { caseId: { in: assignedCaseIds } },
+        { userId: user.userId },
+      ];
+
       events = await this.prisma.auditEvent.findMany({
-        where: {
-          OR: [
-            { caseId: { in: assignedCaseIds } },
-            { userId: user.userId },
-          ],
-        },
+        where: hasDateFilter
+          ? { AND: [{ OR: baseOrClause }, { createdAt: createdAtFilter }] }
+          : { OR: baseOrClause },
         orderBy: { sequenceNumber: 'desc' },
         take: 100,
         include: {

@@ -1,38 +1,31 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 
 interface MotionCardProps {
   children: React.ReactNode;
   className?: string;
   onClick?: () => void;
-  disabled?: boolean;
-  isFocused?: boolean;
+  hoverScale?: number;
 }
 
 export const MotionCard: React.FC<MotionCardProps> = ({
   children,
   className = '',
   onClick,
-  disabled = false,
-  isFocused = false,
+  hoverScale = 1.015,
 }) => {
-  const isInteractive = Boolean(onClick) && !disabled;
-
   return (
-    <div
-      onClick={disabled ? undefined : onClick}
-      className={`
-        rounded-2xl transition-all duration-standard ease-cinematic gpu-accelerate
-        ${isFocused ? 'layer-focused' : 'layer-panel'}
-        ${
-          isInteractive
-            ? 'cursor-pointer hover:-translate-y-0.5 hover:border-slate-700 active:scale-[0.985] active:translate-y-0'
-            : ''
-        }
-        ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-        ${className}
-      `}
+    <motion.div
+      whileHover={{
+        scale: hoverScale,
+        y: -3,
+        transition: { type: 'spring', stiffness: 400, damping: 25 },
+      }}
+      whileTap={{ scale: 0.985 }}
+      onClick={onClick}
+      className={`gpu-accelerate ${className} ${onClick ? 'cursor-pointer' : ''}`}
     >
       {children}
-    </div>
+    </motion.div>
   );
 };

@@ -344,8 +344,7 @@ describe('SecurityModule & Milestone 6 Core Test Suite', () => {
 
   it('13, 16, 18, 19. Modified storage bytes fail verification, block download, and create CRITICAL OPEN incident', async () => {
     // Simulate byte tampering in storage
-    const tamperedBuffer = Buffer.from('TAMPERED UNAUTHORIZED MALICIOUS BYTES');
-    storageService.mutateMockFileBytes(ver1.storagePath, tamperedBuffer);
+    await storageService.simulateTamperInStorage(ver1.storagePath);
 
     // Attempt access must throw ForbiddenException
     await expect(
@@ -360,12 +359,11 @@ describe('SecurityModule & Milestone 6 Core Test Suite', () => {
     expect(incidents[0].status).toBe(IncidentStatus.OPEN);
 
     // Restore original mock bytes
-    storageService.mutateMockFileBytes(ver1.storagePath, sampleV1Buffer);
+    await storageService.uploadFile(ver1.storagePath, sampleV1Buffer, 'text/plain');
   });
 
   it('20 & 21. Repeated access to tampered document deduplicates OPEN incidents but appends audit events', async () => {
-    const tamperedBuffer = Buffer.from('TAMPERED BYTES AGAIN');
-    storageService.mutateMockFileBytes(ver1.storagePath, tamperedBuffer);
+    await storageService.simulateTamperInStorage(ver1.storagePath);
 
     // Access attempt 1
     await expect(documentsService.downloadVersionWithIntegrityCheck(doc1.id, ver1.id, adminUser)).rejects.toThrow();
@@ -383,7 +381,7 @@ describe('SecurityModule & Milestone 6 Core Test Suite', () => {
     expect(auditFailures.length).toBeGreaterThanOrEqual(2);
 
     // Restore mock bytes
-    storageService.mutateMockFileBytes(ver1.storagePath, sampleV1Buffer);
+    await storageService.uploadFile(ver1.storagePath, sampleV1Buffer, 'text/plain');
   });
 
   // ========================================================

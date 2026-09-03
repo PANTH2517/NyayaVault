@@ -1,9 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use(cookieParser());
   
   app.useGlobalPipes(
     new ValidationPipe({
@@ -13,10 +16,19 @@ async function bootstrap() {
     }),
   );
 
-  const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const frontendUrlEnv = process.env.FRONTEND_URL;
+  const allowedOrigins = frontendUrlEnv
+    ? frontendUrlEnv.split(',').map((o) => o.trim())
+    : ['http://localhost:5173', 'http://127.0.0.1:5173'];
 
   app.enableCors({
-    origin: allowedOrigin,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS policy blocked access from origin '${origin}'`));
+      }
+    },
     credentials: true,
   });
 

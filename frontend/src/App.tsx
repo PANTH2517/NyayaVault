@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { Sidebar, ViewTab } from './components/Sidebar';
 import { LoginView } from './components/views/LoginView';
+import { ResetPasswordView } from './components/views/ResetPasswordView';
 import { DashboardView } from './components/views/DashboardView';
 import { CasesView } from './components/views/CasesView';
 import { CaseDetailView } from './components/views/CaseDetailView';
@@ -11,22 +13,45 @@ import { SearchFilterView } from './components/views/SearchFilterView';
 import { ApprovalsView } from './components/views/ApprovalsView';
 import { IncidentsView } from './components/views/IncidentsView';
 import { AuditTrailView } from './components/views/AuditTrailView';
+import { AboutView } from './components/views/AboutView';
+import { UserManagementView } from './components/views/UserManagementView';
+import { SecurityControlsView } from './components/views/SecurityControlsView';
 import { MotionPage } from './components/motion/MotionPage';
+import { CinematicBackground } from './components/motion/CinematicBackground';
 
 const MainLayout: React.FC = () => {
   const { user, loading } = useAuth();
   const [currentTab, setCurrentTab] = useState<ViewTab>('dashboard');
+  const [isResetRoute, setIsResetRoute] = useState(false);
 
   // Sub-view drilldown state
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (window.location.pathname === '/reset-password') {
+      setIsResetRoute(true);
+    }
+  }, []);
+
+  if (isResetRoute) {
+    return (
+      <ResetPasswordView
+        onReturnToLogin={() => {
+          window.history.pushState({}, '', '/');
+          setIsResetRoute(false);
+        }}
+      />
+    );
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center font-sans text-xs">
-        <div className="flex items-center gap-3">
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center font-sans text-xs relative">
+        <CinematicBackground />
+        <div className="flex items-center gap-3 z-10 p-4 rounded-xl bg-slate-900/90 border border-slate-800 backdrop-blur-md shadow-2xl">
           <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-          <span>Verifying Authentic Session Credentials...</span>
+          <span>Verifying Security Session Credentials...</span>
         </div>
       </div>
     );
@@ -51,63 +76,101 @@ const MainLayout: React.FC = () => {
     setSelectedDocId(docId);
   };
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-amber-500 selection:text-slate-950 font-sans">
-      <Header />
-
-      <div className="flex-1 flex overflow-hidden">
-        <Sidebar
-          currentTab={currentTab}
-          onTabChange={handleTabChange}
+  const renderContent = () => {
+    if (selectedDocId) {
+      return (
+        <DocumentDetailView
+          documentId={selectedDocId}
+          onBack={() => setSelectedDocId(null)}
         />
+      );
+    }
 
-        <main className="flex-1 overflow-y-auto p-6 max-w-7xl w-full mx-auto">
-          {/* Sub-view drilldowns priority over main tab */}
-          <MotionPage viewKey={selectedDocId || selectedCaseId || currentTab}>
-            {selectedDocId ? (
-              <DocumentDetailView
-                documentId={selectedDocId}
-                onBack={() => setSelectedDocId(null)}
-              />
-            ) : selectedCaseId ? (
-              <CaseDetailView
-                caseId={selectedCaseId}
-                onBack={() => setSelectedCaseId(null)}
-                onSelectDocument={handleSelectDocument}
-              />
-            ) : (
-              <>
-                {currentTab === 'dashboard' && (
-                  <DashboardView onNavigate={handleTabChange} />
-                )}
-                {currentTab === 'cases' && (
-                  <CasesView onSelectCase={handleSelectCase} />
-                )}
-                {currentTab === 'search' && (
-                  <SearchFilterView onSelectDocument={handleSelectDocument} />
-                )}
-                {currentTab === 'approvals' && (
-                  <ApprovalsView onSelectDocument={handleSelectDocument} />
-                )}
-                {currentTab === 'incidents' && <IncidentsView />}
-                {currentTab === 'audit' && <AuditTrailView />}
-              </>
-            )}
-          </MotionPage>
+    if (selectedCaseId) {
+      return (
+        <CaseDetailView
+          caseId={selectedCaseId}
+          onBack={() => setSelectedCaseId(null)}
+          onSelectDocument={handleSelectDocument}
+        />
+      );
+    }
+
+    switch (currentTab) {
+      case 'dashboard':
+        return (
+          <DashboardView
+            onNavigate={(tab, param) => {
+              if (param) {
+                if (tab === 'cases') setSelectedCaseId(param);
+                else if (tab === 'search') setSelectedDocId(param);
+              } else {
+                handleTabChange(tab);
+              }
+            }}
+          />
+        );
+      case 'cases':
+        return <CasesView onSelectCase={handleSelectCase} />;
+      case 'search':
+        return <SearchFilterView onSelectDocument={handleSelectDocument} />;
+      case 'approvals':
+        return <ApprovalsView onSelectDocument={handleSelectDocument} />;
+      case 'incidents':
+        return <IncidentsView />;
+      case 'audit':
+        return <AuditTrailView />;
+      case 'about':
+        return <AboutView />;
+      case 'users':
+        return <UserManagementView />;
+      case 'security-controls':
+        return <SecurityControlsView />;
+      default:
+        return (
+          <DashboardView
+            onNavigate={(tab) => handleTabChange(tab)}
+          />
+        );
+    }
+  };
+
+  const viewKeys = selectedDocId
+    ? `doc-${selectedDocId}`
+    : selectedCaseId
+    ? `case-${selectedCaseId}`
+    : currentTab;
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative">
+      <CinematicBackground />
+
+      <Header
+        onSelectCase={handleSelectCase}
+        onSelectDocument={handleSelectDocument}
+      />
+
+      <div className="flex-1 flex overflow-hidden z-10">
+        <Sidebar currentTab={currentTab} onTabChange={handleTabChange} />
+
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin">
+          <div className="max-w-7xl mx-auto">
+            <AnimatePresence mode="wait">
+              <MotionPage key={viewKeys}>{renderContent()}</MotionPage>
+            </AnimatePresence>
+          </div>
         </main>
       </div>
-
-      <footer className="border-t border-slate-800/80 bg-slate-950 py-3 px-6 text-center text-xs text-slate-500">
-        NyayaVault &copy; 2026 — Secure Digital Document Management System &bull; Tagline: "Secure Evidence. Trusted Justice."
-      </footer>
     </div>
   );
 };
 
-export default function App() {
+export const App: React.FC = () => {
   return (
     <AuthProvider>
       <MainLayout />
     </AuthProvider>
   );
-}
+};
+
+export default App;

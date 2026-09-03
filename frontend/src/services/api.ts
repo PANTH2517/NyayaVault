@@ -11,16 +11,65 @@ import {
   DocumentClassification,
   DocumentStatus,
   IncidentStatus,
+  RoleName,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
-function getAuthHeader(): Record<string, string> {
-  const token = localStorage.getItem('nyaya_access_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+// In-memory access token storage (Security requirement: never in localStorage/sessionStorage)
+let inMemoryAccessToken: string | null = null;
+
+export function setAccessToken(token: string | null) {
+  inMemoryAccessToken = token;
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export function getAccessToken(): string | null {
+  return inMemoryAccessToken;
+}
+
+function getAuthHeader(): Record<string, string> {
+  return inMemoryAccessToken ? { Authorization: `Bearer ${inMemoryAccessToken}` } : {};
+}
+
+// Shared promise for concurrent 401 refresh prevention
+let refreshPromise: Promise<string | null> | null = null;
+
+export async function refreshAccessToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        setAccessToken(null);
+        return null;
+      }
+
+      const data = await res.json();
+      if (data.accessToken) {
+        setAccessToken(data.accessToken);
+        return data.accessToken;
+      }
+
+      setAccessToken(null);
+      return null;
+    } catch (_) {
+      setAccessToken(null);
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T> {
   const headers = {
     ...getAuthHeader(),
     ...options.headers,
@@ -29,7 +78,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers,
+    credentials: 'include',
   });
+
+  if (response.status === 401 && !isRetry && endpoint !== '/auth/login' && endpoint !== '/auth/refresh') {
+    // Access token expired: attempt silent refresh using HTTP-only cookie
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      // Retry original request once with new access token
+      return request<T>(endpoint, options, true);
+    }
+  }
 
   if (!response.ok) {
     let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
@@ -54,18 +113,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export const api = {
   // Auth
-  async login(email: string, passwordHash: string) {
+  async login(email: string, password: string) {
     const data = await request<any>('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: passwordHash }),
+      body: JSON.stringify({ email, password }),
     });
 
     const accessToken = data.accessToken || data.tokens?.accessToken;
-    const refreshToken = data.refreshToken || data.tokens?.refreshToken;
-
-    if (accessToken) localStorage.setItem('nyaya_access_token', accessToken);
-    if (refreshToken) localStorage.setItem('nyaya_refresh_token', refreshToken);
+    if (accessToken) {
+      setAccessToken(accessToken);
+    }
     return data;
   },
 
@@ -73,9 +131,77 @@ export const api = {
     return request<User>('/auth/me');
   },
 
-  logout() {
-    localStorage.removeItem('nyaya_access_token');
-    localStorage.removeItem('nyaya_refresh_token');
+  async changePassword(currentPassword: string, newPassword: string, confirmPassword: string) {
+    return request<{ message: string }>('/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+    });
+  },
+
+  async requestPasswordReset(email: string) {
+    return request<{ message: string }>('/auth/password-reset/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async confirmPasswordReset(data: { token: string; newPassword: string; confirmPassword: string }) {
+    return request<{ message: string }>('/auth/password-reset/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+
+  async logout() {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        credentials: 'include',
+      });
+    } catch (_) {
+      // Ignore logout request errors and clean local state
+    } finally {
+      setAccessToken(null);
+      localStorage.removeItem('nyaya_access_token');
+      localStorage.removeItem('nyaya_refresh_token');
+    }
+  },
+
+  // Admin User Management
+  async getUsers() {
+    return request<User[]>('/admin/users');
+  },
+
+  async getUserById(userId: string) {
+    return request<User>(`/admin/users/${userId}`);
+  },
+
+  async createUser(data: { email: string; fullName: string; password: string; role: RoleName }) {
+    return request<User>('/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateUserRole(userId: string, role: RoleName) {
+    return request<User>(`/admin/users/${userId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+  },
+
+  async updateUserStatus(userId: string, isActive: boolean) {
+    return request<User>(`/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive }),
+    });
   },
 
   // Dashboard
@@ -127,6 +253,7 @@ export const api = {
       method: 'POST',
       headers,
       body: formData,
+      credentials: 'include',
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -141,6 +268,7 @@ export const api = {
       method: 'POST',
       headers,
       body: formData,
+      credentials: 'include',
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -149,20 +277,27 @@ export const api = {
     return res.json();
   },
 
-  async downloadVersion(documentId: string, versionId: string, filename: string) {
+  async fetchVerifiedBlob(documentId: string, versionId: string) {
     const headers = getAuthHeader();
     const res = await fetch(`${API_BASE}/documents/${documentId}/versions/${versionId}/download`, {
       method: 'GET',
       headers,
+      credentials: 'include',
     });
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || `Download failed with HTTP ${res.status}`);
+      throw new Error(errData.message || `Verification failed with HTTP ${res.status}`);
     }
 
     const sha256 = res.headers.get('X-Document-SHA256');
+    const contentType = res.headers.get('Content-Type');
     const blob = await res.blob();
+    return { blob, sha256, contentType };
+  },
+
+  async downloadVersion(documentId: string, versionId: string, filename: string) {
+    const { blob, sha256 } = await this.fetchVerifiedBlob(documentId, versionId);
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -234,8 +369,12 @@ export const api = {
   },
 
   // Audit Chain & Tamper Demo
-  async getAuditEvents() {
-    return request<AuditEvent[]>('/security/audit-events');
+  async getAuditEvents(params?: { startDate?: string; endDate?: string }) {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.append('startDate', params.startDate);
+    if (params?.endDate) query.append('endDate', params.endDate);
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    return request<AuditEvent[]>(`/security/audit-events${queryString}`);
   },
 
   async verifyAuditChain() {

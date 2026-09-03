@@ -13,7 +13,7 @@ export class SupabaseStorageService {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_KEY;
 
-    if (supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder')) {
+    if (supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && process.env.NODE_ENV !== 'test') {
       this.supabaseClient = createClient(supabaseUrl, supabaseKey);
       this.logger.log(`Initialized Supabase Storage Client for bucket '${this.bucketName}'`);
     } else {
@@ -32,7 +32,7 @@ export class SupabaseStorageService {
         .from(this.bucketName)
         .upload(storagePath, buffer, {
           contentType: mimeType,
-          upsert: false,
+          upsert: true,
         });
 
       if (error) {

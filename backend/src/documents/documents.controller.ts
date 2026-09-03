@@ -29,6 +29,19 @@ export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
   /**
+   * GET /api/v1/documents/search
+   * Search and filter documents with CBAC authorization & pagination
+   * MUST BE DECLARED BEFORE @Get('documents/:id') TO PREVENT PARSE AS DOCUMENT ID
+   */
+  @Get('documents/search')
+  async searchDocuments(
+    @Query() query: SearchDocumentsDto,
+    @CurrentUser() user: UserPayload,
+  ) {
+    return this.documentsService.searchDocuments(user, query);
+  }
+
+  /**
    * POST /api/v1/cases/:caseId/documents
    * Multipart upload initial document (v1) for case
    */
@@ -113,18 +126,6 @@ export class DocumentsController {
   @UseGuards(DocumentAccessGuard)
   async findVersionsForDocument(@Param('id') documentId: string) {
     return this.documentsService.findVersionsForDocument(documentId);
-  }
-
-  /**
-   * GET /api/v1/documents/search
-   * Search and filter documents with CBAC authorization & pagination
-   */
-  @Get('documents/search')
-  async searchDocuments(
-    @Query() query: SearchDocumentsDto,
-    @CurrentUser() user: UserPayload,
-  ) {
-    return this.documentsService.searchDocuments(user, query);
   }
 
   /**

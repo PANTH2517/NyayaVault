@@ -11,6 +11,7 @@ export interface User {
   email: string;
   fullName: string;
   role: RoleName;
+  isActive?: boolean;
 }
 
 export interface CaseAssignment {

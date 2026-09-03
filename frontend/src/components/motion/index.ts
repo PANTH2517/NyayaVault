@@ -1,5 +1,13 @@
-export { MotionPage } from './MotionPage';
-export { MotionStagger } from './MotionStagger';
-export { MotionCard } from './MotionCard';
-export { MotionReveal } from './MotionReveal';
-export { MotionStatus } from './MotionStatus';
+export * from './CinematicBackground';
+export * from './MotionPage';
+export * from './MotionStagger';
+export * from './MotionCard';
+export * from './MotionReveal';
+export * from './MotionStatus';
+export * from './AnimatedNumber';
+export * from './SecurityPostureRing';
+export * from './CryptographicChain';
+export * from './HashComparisonVisualizer';
+export * from './AuditLedgerTimeline';
+export * from './TamperSimulationVisualizer';
+export * from './WorkflowStateBadge';

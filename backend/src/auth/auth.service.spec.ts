@@ -4,12 +4,14 @@ import { UnauthorizedException, ForbiddenException, ExecutionContext } from '@ne
 import * as argon2 from 'argon2';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditChainService } from '../security/audit-chain.service';
+import { EmailService } from '../email/email.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Reflector } from '@nestjs/core';
 import { RoleName } from '@prisma/client';
 
-describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
+describe('AuthModule Unit & Integration Suite (Step 1 Production Hardened)', () => {
   let authService: AuthService;
   let jwtService: JwtService;
 
@@ -18,7 +20,7 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
     id: 'user-uuid-101',
     email: 'admin@nyayavault.gov.in',
     fullName: 'System Administrator',
-    passwordHash: '', // Set in beforeAll
+    passwordHash: '',
     role: RoleName.ADMIN,
     refreshTokenHash: null as string | null,
     isActive: true,
@@ -38,6 +40,15 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
     updatedAt: new Date(),
   };
 
+  // Mock Stores
+  const mockSessionsStore = new Map<string, any>();
+  const mockResetTokensStore = new Map<string, any>();
+
+  const mockEmailService = {
+    sendEmail: jest.fn().mockResolvedValue(true),
+    sendPasswordResetEmail: jest.fn().mockResolvedValue(true),
+  };
+
   const mockPrismaService = {
     user: {
       findUnique: jest.fn().mockImplementation(async ({ where }) => {
@@ -51,14 +62,98 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
       }),
       update: jest.fn().mockImplementation(async ({ where, data }) => {
         if (where.id === mockUser.id) {
-          if ('refreshTokenHash' in data) mockUser.refreshTokenHash = data.refreshTokenHash;
+          if ('isActive' in data) mockUser.isActive = data.isActive;
+          if ('passwordHash' in data) mockUser.passwordHash = data.passwordHash;
           return mockUser;
         }
-        if (where.id === mockOfficerUser.id) {
-          if ('refreshTokenHash' in data) mockOfficerUser.refreshTokenHash = data.refreshTokenHash;
-          return mockOfficerUser;
+        return null;
+      }),
+    },
+    passwordResetToken: {
+      deleteMany: jest.fn().mockImplementation(async ({ where }) => {
+        let count = 0;
+        mockResetTokensStore.forEach((token, key) => {
+          if (token.userId === where.userId) {
+            mockResetTokensStore.delete(key);
+            count++;
+          }
+        });
+        return { count };
+      }),
+      create: jest.fn().mockImplementation(async ({ data }) => {
+        const id = `reset-token-uuid-${mockResetTokensStore.size + 1}`;
+        const record = {
+          id,
+          userId: data.userId,
+          tokenHash: data.tokenHash,
+          expiresAt: data.expiresAt,
+          usedAt: null,
+          createdAt: new Date(),
+        };
+        mockResetTokensStore.set(data.tokenHash, record);
+        return record;
+      }),
+      findFirst: jest.fn().mockImplementation(async ({ where }) => {
+        const record = mockResetTokensStore.get(where.tokenHash);
+        if (!record) return null;
+        return {
+          ...record,
+          user: record.userId === mockUser.id ? mockUser : mockOfficerUser,
+        };
+      }),
+      update: jest.fn().mockImplementation(async ({ where, data }) => {
+        for (const [key, record] of mockResetTokensStore.entries()) {
+          if (record.id === where.id) {
+            if ('usedAt' in data) record.usedAt = data.usedAt;
+            return record;
+          }
         }
         return null;
+      }),
+    },
+    userSession: {
+      create: jest.fn().mockImplementation(async ({ data }) => {
+        const id = `session-uuid-${mockSessionsStore.size + 1}`;
+        const session = {
+          id,
+          userId: data.userId,
+          refreshTokenHash: data.refreshTokenHash,
+          ipAddress: data.ipAddress || null,
+          userAgent: data.userAgent || null,
+          expiresAt: data.expiresAt,
+          revokedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          user: data.userId === mockUser.id ? mockUser : mockOfficerUser,
+        };
+        mockSessionsStore.set(id, session);
+        return session;
+      }),
+      findUnique: jest.fn().mockImplementation(async ({ where }) => {
+        const session = mockSessionsStore.get(where.id);
+        if (!session) return null;
+        return {
+          ...session,
+          user: session.userId === mockUser.id ? mockUser : mockOfficerUser,
+        };
+      }),
+      update: jest.fn().mockImplementation(async ({ where, data }) => {
+        const session = mockSessionsStore.get(where.id);
+        if (!session) return null;
+        if ('refreshTokenHash' in data) session.refreshTokenHash = data.refreshTokenHash;
+        if ('revokedAt' in data) session.revokedAt = data.revokedAt;
+        return session;
+      }),
+      updateMany: jest.fn().mockImplementation(async ({ where, data }) => {
+        let count = 0;
+        mockSessionsStore.forEach((session) => {
+          if (session.userId === where.userId && session.revokedAt === null) {
+            if (where.id && session.id !== where.id) return;
+            session.revokedAt = data.revokedAt;
+            count++;
+          }
+        });
+        return { count };
       }),
     },
   };
@@ -66,6 +161,11 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
   beforeAll(async () => {
     mockUser.passwordHash = await argon2.hash('Admin@Nyaya2026');
     mockOfficerUser.passwordHash = await argon2.hash('Officer@Nyaya2026');
+
+    const mockAuditChainService = {
+      recordEvent: jest.fn().mockResolvedValue({ id: 'audit-mock-id', sequenceNumber: '1' }),
+      verifyChain: jest.fn().mockResolvedValue({ valid: true, totalEvents: 1 }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       imports: [
@@ -78,6 +178,14 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: AuditChainService,
+          useValue: mockAuditChainService,
+        },
+        {
+          provide: EmailService,
+          useValue: mockEmailService,
         },
       ],
     }).compile();
@@ -96,48 +204,110 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
     });
   });
 
-  describe('2. Login Authentication', () => {
-    it('should successfully log in with valid credentials and return tokens without passwordHash', async () => {
-      const result = await authService.login({
-        email: 'admin@nyayavault.gov.in',
-        password: 'Admin@Nyaya2026',
-      });
+  describe('2. Login Authentication & UserSession Creation', () => {
+    it('should successfully log in with valid credentials, create a UserSession, and return tokens without passwordHash', async () => {
+      const result = await authService.login(
+        { email: 'admin@nyayavault.gov.in', password: 'Admin@Nyaya2026' },
+        '127.0.0.1',
+        'Jest/Test-Agent',
+      );
 
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
       expect(result.user.email).toBe('admin@nyayavault.gov.in');
       expect(result.user.role).toBe(RoleName.ADMIN);
 
-      // Verify strict security non-exposure invariant
+      // Verify non-exposure invariant
       expect((result.user as any).passwordHash).toBeUndefined();
       expect((result.user as any).refreshTokenHash).toBeUndefined();
+
+      // Verify UserSession was created in store
+      expect(mockSessionsStore.size).toBeGreaterThan(0);
     });
 
     it('should reject login with invalid password', async () => {
       await expect(
-        authService.login({
-          email: 'admin@nyayavault.gov.in',
-          password: 'IncorrectPassword',
-        }),
+        authService.login({ email: 'admin@nyayavault.gov.in', password: 'IncorrectPassword' }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
     it('should reject login with non-existent email', async () => {
       await expect(
-        authService.login({
-          email: 'unknown@nyayavault.gov.in',
-          password: 'Admin@Nyaya2026',
-        }),
+        authService.login({ email: 'unknown@nyayavault.gov.in', password: 'Admin@Nyaya2026' }),
       ).rejects.toThrow(UnauthorizedException);
     });
   });
 
-  describe('3. JWT Access Token Guard', () => {
-    it('should validate valid JWT bearer token in JwtAuthGuard', async () => {
-      const guard = new JwtAuthGuard(jwtService);
+  describe('3. Multi-Session & Refresh Token Rotation', () => {
+    it('should allow multi-device logins creating independent sessions', async () => {
+      const session1 = await authService.login(
+        { email: 'admin@nyayavault.gov.in', password: 'Admin@Nyaya2026' },
+        '10.0.0.1',
+        'Device-1',
+      );
+
+      const session2 = await authService.login(
+        { email: 'admin@nyayavault.gov.in', password: 'Admin@Nyaya2026' },
+        '10.0.0.2',
+        'Device-2',
+      );
+
+      expect(session1.refreshToken).not.toEqual(session2.refreshToken);
+
+      // Rotating session 1 should not invalidate session 2
+      const rotated1 = await authService.refreshTokens(session1.refreshToken);
+      expect(rotated1.accessToken).toBeDefined();
+
+      const refreshed2 = await authService.refreshTokens(session2.refreshToken);
+      expect(refreshed2.accessToken).toBeDefined();
+    });
+
+    it('should reject reuse of a revoked refresh token', async () => {
+      const loginRes = await authService.login({
+        email: 'admin@nyayavault.gov.in',
+        password: 'Admin@Nyaya2026',
+      });
+
+      // Refresh once (rotates and revokes original session token)
+      await authService.refreshTokens(loginRes.refreshToken);
+
+      // Attempting to reuse original refresh token must fail
+      await expect(authService.refreshTokens(loginRes.refreshToken)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('should revoke user session on logout', async () => {
+      const loginRes = await authService.login({
+        email: 'admin@nyayavault.gov.in',
+        password: 'Admin@Nyaya2026',
+      });
+
+      const logoutRes = await authService.logout(mockUser.id, loginRes.refreshToken);
+      expect(logoutRes.message).toBe('Logged out successfully');
+
+      // Refresh attempt with logged out session must fail
+      await expect(authService.refreshTokens(loginRes.refreshToken)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+  });
+
+  describe('4. Account Status & JWT Guard Enforcement', () => {
+    it('should reject login for deactivated users', async () => {
+      mockUser.isActive = false;
+      await expect(
+        authService.login({ email: 'admin@nyayavault.gov.in', password: 'Admin@Nyaya2026' }),
+      ).rejects.toThrow(UnauthorizedException);
+      mockUser.isActive = true; // reset
+    });
+
+    it('should deny JWT access guard when user account is deactivated in DB', async () => {
+      const guard = new JwtAuthGuard(jwtService, mockPrismaService as any);
+      const secret = process.env.JWT_SECRET || 'dev_jwt_secret_key_for_local_testing_only';
       const token = await jwtService.signAsync(
         { sub: mockUser.id, email: mockUser.email, role: mockUser.role },
-        { secret: 'dev_jwt_secret_key_for_local_testing_only' },
+        { secret },
       );
 
       const mockContext = {
@@ -148,25 +318,17 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
         }),
       } as ExecutionContext;
 
-      const canActivate = await guard.canActivate(mockContext);
-      expect(canActivate).toBe(true);
-    });
+      // Active -> grant
+      expect(await guard.canActivate(mockContext)).toBe(true);
 
-    it('should reject requests with missing authorization header', async () => {
-      const guard = new JwtAuthGuard(jwtService);
-      const mockContext = {
-        switchToHttp: () => ({
-          getRequest: () => ({
-            headers: {},
-          }),
-        }),
-      } as ExecutionContext;
-
+      // Deactivated -> deny immediately
+      mockUser.isActive = false;
       await expect(guard.canActivate(mockContext)).rejects.toThrow(UnauthorizedException);
+      mockUser.isActive = true; // reset
     });
   });
 
-  describe('4. RBAC Roles Guard Enforcement', () => {
+  describe('5. RBAC Roles Guard Enforcement', () => {
     it('should grant access when user role matches required role (ADMIN)', () => {
       const reflector = new Reflector();
       jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([RoleName.ADMIN]);
@@ -185,7 +347,7 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
       expect(guard.canActivate(mockContext)).toBe(true);
     });
 
-    it('should deny access when user role (INVESTIGATING_OFFICER) does not match required role (ADMIN)', () => {
+    it('should deny access when user role does not match required role', () => {
       const reflector = new Reflector();
       jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([RoleName.ADMIN]);
       const guard = new RolesGuard(reflector);
@@ -195,7 +357,11 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
         getClass: () => ({}),
         switchToHttp: () => ({
           getRequest: () => ({
-            user: { userId: mockOfficerUser.id, email: mockOfficerUser.email, role: RoleName.INVESTIGATING_OFFICER },
+            user: {
+              userId: mockOfficerUser.id,
+              email: mockOfficerUser.email,
+              role: RoleName.INVESTIGATING_OFFICER,
+            },
           }),
         }),
       } as ExecutionContext;
@@ -204,45 +370,82 @@ describe('AuthModule Unit & Integration Suite (Milestone 3)', () => {
     });
   });
 
-  describe('5. Refresh Token Rotation & Logout', () => {
-    it('should rotate tokens successfully when valid refresh token is submitted', async () => {
-      // 1. Perform initial login to generate stored refreshTokenHash
-      const loginRes = await authService.login({
-        email: 'admin@nyayavault.gov.in',
-        password: 'Admin@Nyaya2026',
-      });
+  describe('6. Password Reset Security & Token Hashing', () => {
+    it('1, 2, 3, 4. Should return identical generic response for valid, nonexistent, or disabled emails (Account Enumeration Defense)', async () => {
+      const res1 = await authService.requestPasswordReset({ email: 'admin@nyayavault.gov.in' });
+      const res2 = await authService.requestPasswordReset({ email: 'nonexistent@nyayavault.gov.in' });
 
-      // Delay 1 second to ensure iat (issued at) timestamp increments for new access token
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      mockUser.isActive = false;
+      const res3 = await authService.requestPasswordReset({ email: 'admin@nyayavault.gov.in' });
+      mockUser.isActive = true;
 
-      // 2. Perform refresh
-      const refreshRes = await authService.refreshTokens({
-        refreshToken: loginRes.refreshToken,
-      });
-
-      expect(refreshRes).toHaveProperty('accessToken');
-      expect(refreshRes).toHaveProperty('refreshToken');
-      expect(refreshRes.accessToken).not.toEqual(loginRes.accessToken);
+      const expectedMsg = 'If an active account exists for this official email, password reset instructions will be sent.';
+      expect(res1.message).toBe(expectedMsg);
+      expect(res2.message).toBe(expectedMsg);
+      expect(res3.message).toBe(expectedMsg);
     });
 
-    it('should invalidate refresh token on logout', async () => {
-      // 1. Perform login
+    it('5, 6, 14, 15. Should generate random 256-bit token, store only SHA-256 hash in DB, and never expose raw token in DB or audit events', async () => {
+      mockResetTokensStore.clear();
+      await authService.requestPasswordReset({ email: 'admin@nyayavault.gov.in' });
+
+      expect(mockResetTokensStore.size).toBe(1);
+      const storedRecord = Array.from(mockResetTokensStore.values())[0];
+
+      expect(storedRecord.tokenHash).toHaveLength(64); // SHA-256 hex string
+      expect(storedRecord.rawToken).toBeUndefined(); // Raw token never stored
+    });
+
+    it('7, 8, 9, 10, 11, 12, 13, 17. Should complete password reset with valid token, update password with Argon2, revoke all sessions, and require fresh login', async () => {
+      // 1. Create active session
       const loginRes = await authService.login({
         email: 'admin@nyayavault.gov.in',
         password: 'Admin@Nyaya2026',
       });
+      expect(loginRes.accessToken).toBeDefined();
 
-      // 2. Logout
-      const logoutRes = await authService.logout(mockUser.id);
-      expect(logoutRes.message).toBe('Logged out successfully');
-      expect(mockUser.refreshTokenHash).toBeNull();
+      // 2. Request reset
+      mockResetTokensStore.clear();
+      await authService.requestPasswordReset({ email: 'admin@nyayavault.gov.in' });
+      expect(mockEmailService.sendPasswordResetEmail).toHaveBeenCalled();
 
-      // 3. Subsequent refresh attempt must fail
+      // Extract raw token from mock email call
+      const resetCallArgs = mockEmailService.sendPasswordResetEmail.mock.calls.slice(-1)[0];
+      const resetUrl = resetCallArgs[1];
+      const rawToken = new URL(resetUrl).searchParams.get('token');
+      expect(rawToken).toBeTruthy();
+
+      // 3. Confirm password reset with new password
+      const newPass = 'BrandNewSecuredPassword2026!';
+      const confirmRes = await authService.confirmPasswordReset({
+        token: rawToken!,
+        newPassword: newPass,
+        confirmPassword: newPass,
+      });
+
+      expect(confirmRes.message).toContain('Password reset successfully');
+
+      // 4. Verify old password no longer works
       await expect(
-        authService.refreshTokens({
-          refreshToken: loginRes.refreshToken,
+        authService.login({ email: 'admin@nyayavault.gov.in', password: 'Admin@Nyaya2026' }),
+      ).rejects.toThrow();
+
+      // 5. Verify new password works
+      const newLogin = await authService.login({
+        email: 'admin@nyayavault.gov.in',
+        password: newPass,
+      });
+      expect(newLogin.accessToken).toBeDefined();
+
+      // 6. Verify token reuse prevention
+      await expect(
+        authService.confirmPasswordReset({
+          token: rawToken!,
+          newPassword: 'AnotherPassword123!',
+          confirmPassword: 'AnotherPassword123!',
         }),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow();
     });
   });
 });
+

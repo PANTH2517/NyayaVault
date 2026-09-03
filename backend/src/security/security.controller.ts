@@ -5,6 +5,7 @@ import {
   Patch,
   Param,
   Body,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -34,11 +35,15 @@ export class SecurityController {
 
   /**
    * GET /api/v1/security/audit-events
-   * Fetch audit trail events with role & CBAC filtering
+   * Fetch audit trail events with role & CBAC filtering and optional date range
    */
   @Get('security/audit-events')
-  async getAuditEvents(@CurrentUser() user: UserPayload) {
-    return this.auditChainService.getAuditEventsForUser(user);
+  async getAuditEvents(
+    @CurrentUser() user: UserPayload,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.auditChainService.getAuditEventsForUser(user, startDate, endDate);
   }
 
   /**
