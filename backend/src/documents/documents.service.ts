@@ -84,44 +84,47 @@ export class DocumentsService {
 
     // 7. Persist Document & DocumentVersion in Prisma Transaction with failure cleanup
     try {
-      const result = await this.prisma.$transaction(async (tx) => {
-        const document = await tx.document.create({
-          data: {
-            id: documentId,
-            caseId,
-            title: uploadDto.title,
-            documentType: uploadDto.documentType,
-            classification: uploadDto.classification || DocumentClassification.CONFIDENTIAL,
-            currentStatus: DocumentStatus.DRAFT,
-            createdById: user.userId,
-          },
-        });
+      const result = await this.prisma.$transaction(
+        async (tx) => {
+          const document = await tx.document.create({
+            data: {
+              id: documentId,
+              caseId,
+              title: uploadDto.title,
+              documentType: uploadDto.documentType,
+              classification: uploadDto.classification || DocumentClassification.CONFIDENTIAL,
+              currentStatus: DocumentStatus.DRAFT,
+              createdById: user.userId,
+            },
+          });
 
-        const version = await tx.documentVersion.create({
-          data: {
-            documentId: document.id,
-            versionNumber: 1,
-            storagePath,
-            fileSizeBytes: BigInt(file.size),
-            mimeType: file.mimetype,
-            sha256Hash,
-            createdById: user.userId,
-          },
-        });
+          const version = await tx.documentVersion.create({
+            data: {
+              documentId: document.id,
+              versionNumber: 1,
+              storagePath,
+              fileSizeBytes: BigInt(file.size),
+              mimeType: file.mimetype,
+              sha256Hash,
+              createdById: user.userId,
+            },
+          });
 
-        await tx.document.update({
-          where: { id: document.id },
-          data: { currentVersionId: version.id },
-        });
+          await tx.document.update({
+            where: { id: document.id },
+            data: { currentVersionId: version.id },
+          });
 
-        return {
-          document,
-          version: {
-            ...version,
-            fileSizeBytes: version.fileSizeBytes.toString(),
-          },
-        };
-      });
+          return {
+            document,
+            version: {
+              ...version,
+              fileSizeBytes: version.fileSizeBytes.toString(),
+            },
+          };
+        },
+        { maxWait: 10000, timeout: 25000 }
+      );
 
       // 8. Record Hash-Chained Audit Event
       await this.auditChainService.recordEvent({
@@ -191,33 +194,36 @@ export class DocumentsService {
     await this.storageService.uploadFile(storagePath, file.buffer, file.mimetype);
 
     try {
-      const result = await this.prisma.$transaction(async (tx) => {
-        const newVersion = await tx.documentVersion.create({
-          data: {
+      const result = await this.prisma.$transaction(
+        async (tx) => {
+          const newVersion = await tx.documentVersion.create({
+            data: {
+              documentId,
+              versionNumber: nextVersionNumber,
+              storagePath,
+              fileSizeBytes: BigInt(file.size),
+              mimeType: file.mimetype,
+              sha256Hash,
+              changeDescription: changeDescription || null,
+              createdById: user.userId,
+            },
+          });
+
+          await tx.document.update({
+            where: { id: documentId },
+            data: { currentVersionId: newVersion.id, currentStatus: DocumentStatus.DRAFT },
+          });
+
+          return {
             documentId,
-            versionNumber: nextVersionNumber,
-            storagePath,
-            fileSizeBytes: BigInt(file.size),
-            mimeType: file.mimetype,
-            sha256Hash,
-            changeDescription: changeDescription || null,
-            createdById: user.userId,
-          },
-        });
-
-        await tx.document.update({
-          where: { id: documentId },
-          data: { currentVersionId: newVersion.id, currentStatus: DocumentStatus.DRAFT },
-        });
-
-        return {
-          documentId,
-          version: {
-            ...newVersion,
-            fileSizeBytes: newVersion.fileSizeBytes.toString(),
-          },
-        };
-      });
+            version: {
+              ...newVersion,
+              fileSizeBytes: newVersion.fileSizeBytes.toString(),
+            },
+          };
+        },
+        { maxWait: 10000, timeout: 25000 }
+      );
 
       // Record Audit Event
       await this.auditChainService.recordEvent({
@@ -272,38 +278,42 @@ export class DocumentsService {
 
     // 2. Handle Integrity Failure / Tamper Detection
     if (!integrity.valid || integrity.tampered) {
-      // Record INTEGRITY_FAILED in audit chain
-      await this.auditChainService.recordEvent({
-        eventType: AuditEventType.INTEGRITY_FAILED,
-        userId: user.userId,
-        caseId: document.caseId,
-        documentId,
-        versionId,
-        action: `Integrity check FAILED for document '${document.title}' version ${version.versionNumber}`,
-        metadata: {
-          expectedHash: integrity.expectedHash,
-          actualHash: integrity.actualHash,
-          error: integrity.error,
-        },
-      });
+      try {
+        // Record INTEGRITY_FAILED in audit chain
+        await this.auditChainService.recordEvent({
+          eventType: AuditEventType.INTEGRITY_FAILED,
+          userId: user.userId,
+          caseId: document.caseId,
+          documentId,
+          versionId,
+          action: `Integrity check FAILED for document '${document.title}' version ${version.versionNumber}`,
+          metadata: {
+            expectedHash: integrity.expectedHash,
+            actualHash: integrity.actualHash,
+            error: integrity.error,
+          },
+        });
 
-      // Flag version as compromised in DB
-      await this.prisma.documentVersion.update({
-        where: { id: versionId },
-        data: { isCompromised: true },
-      });
+        // Flag version as compromised in DB
+        await this.prisma.documentVersion.update({
+          where: { id: versionId },
+          data: { isCompromised: true },
+        });
 
-      // Automatically create Security Incident (with deduplication)
-      await this.incidentsService.createIncident({
-        incidentType: IncidentType.DOCUMENT_TAMPER_DETECTED,
-        severity: IncidentSeverity.CRITICAL,
-        caseId: document.caseId,
-        documentId,
-        versionId,
-        description: `SECURITY ALERT: Tamper detected for document '${document.title}' (Version ${version.versionNumber}). Expected SHA-256: ${integrity.expectedHash}, Actual: ${integrity.actualHash}`,
-      });
+        // Automatically create Security Incident (with deduplication)
+        await this.incidentsService.createIncident({
+          incidentType: IncidentType.DOCUMENT_TAMPER_DETECTED,
+          severity: IncidentSeverity.CRITICAL,
+          caseId: document.caseId,
+          documentId,
+          versionId,
+          description: `SECURITY ALERT: Tamper detected for document '${document.title}' (Version ${version.versionNumber}). Expected SHA-256: ${integrity.expectedHash}, Actual: ${integrity.actualHash}`,
+        });
+      } catch (err: any) {
+        this.logger.error(`Error recording tamper incident/audit: ${err.message}`);
+      }
 
-      // BLOCK ACCESS
+      // ALWAYS BLOCK ACCESS FAIL-CLOSED
       throw new ForbiddenException('DOCUMENT INTEGRITY COMPROMISED — ACCESS BLOCKED');
     }
 

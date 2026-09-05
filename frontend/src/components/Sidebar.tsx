@@ -136,10 +136,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 text-slate-400 space-y-1.5 text-xs font-sans">
         <div className="flex items-center gap-2 text-emerald-400 font-bold text-[11px]">
           <ShieldCheck className="w-4 h-4 shrink-0" />
-          <span>SHA-256 Protected</span>
+          <span>Integrity Verification Active</span>
         </div>
         <p className="text-[10px] leading-relaxed text-slate-500">
-          Case-based access controls and hash-chained audit logging active.
+          Role & case access controls and audit logging enabled.
         </p>
       </div>
     </aside>

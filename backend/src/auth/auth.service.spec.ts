@@ -49,7 +49,48 @@ describe('AuthModule Unit & Integration Suite (Step 1 Production Hardened)', () 
     sendPasswordResetEmail: jest.fn().mockResolvedValue(true),
   };
 
+  const mockRegRequestsStore = new Map<string, any>();
+
   const mockPrismaService = {
+    registrationRequest: {
+      findUnique: jest.fn().mockImplementation(async ({ where }) => {
+        if (where.email) {
+          for (const req of mockRegRequestsStore.values()) {
+            if (req.email === where.email) return req;
+          }
+        }
+        if (where.id) return mockRegRequestsStore.get(where.id) || null;
+        return null;
+      }),
+      create: jest.fn().mockImplementation(async ({ data }) => {
+        const id = `reg-uuid-${mockRegRequestsStore.size + 1}`;
+        const record = {
+          id,
+          email: data.email,
+          fullName: data.fullName,
+          passwordHash: data.passwordHash,
+          requestedRole: data.requestedRole,
+          status: data.status || 'PENDING',
+          reviewedById: null,
+          rejectionReason: null,
+          reviewedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        mockRegRequestsStore.set(id, record);
+        return record;
+      }),
+      update: jest.fn().mockImplementation(async ({ where, data }) => {
+        const record = mockRegRequestsStore.get(where.id);
+        if (record) {
+          Object.assign(record, data);
+        }
+        return record;
+      }),
+      findMany: jest.fn().mockImplementation(async () => {
+        return Array.from(mockRegRequestsStore.values());
+      }),
+    },
     user: {
       findUnique: jest.fn().mockImplementation(async ({ where }) => {
         if (where.email === mockUser.email || where.id === mockUser.id) {
@@ -445,6 +486,41 @@ describe('AuthModule Unit & Integration Suite (Step 1 Production Hardened)', () 
           confirmPassword: 'AnotherPassword123!',
         }),
       ).rejects.toThrow();
+    });
+  });
+
+  describe('Registration Workflow Tests (Step 19 Admin Approval Model)', () => {
+    it('1. Should submit a valid registration request with PENDING status', async () => {
+      const res = await authService.register({
+        email: 'applicant.test@nyayavault.gov.in',
+        fullName: 'Applicant Officer Test',
+        password: 'Password@2026Test',
+        requestedRole: RoleName.INVESTIGATING_OFFICER,
+      });
+
+      expect(res.message).toBe('Registration submitted');
+      expect(res.status).toBe('PENDING');
+      expect(res.detail).toContain('pending administrator approval');
+    });
+
+    it('2. Should reject registration request attempting ADMIN role', async () => {
+      await expect(
+        authService.register({
+          email: 'hacker.admin@nyayavault.gov.in',
+          fullName: 'Fake Admin Attempt',
+          password: 'Password@2026Test',
+          requestedRole: RoleName.ADMIN,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('3. Should block login for pending registration request with clear message', async () => {
+      await expect(
+        authService.login({
+          email: 'applicant.test@nyayavault.gov.in',
+          password: 'Password@2026Test',
+        }),
+      ).rejects.toThrow('Your registration is awaiting administrator approval.');
     });
   });
 });

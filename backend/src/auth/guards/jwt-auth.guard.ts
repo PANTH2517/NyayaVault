@@ -27,10 +27,23 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     // Verify account active status in DB to ensure immediate deactivation enforcement
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: { id: true, email: true, role: true, isActive: true },
-    });
+    let user: { id: string; email: string; role: any; isActive: boolean } | null = null;
+    let retries = 2;
+    while (retries >= 0) {
+      try {
+        user = await this.prisma.user.findUnique({
+          where: { id: payload.sub },
+          select: { id: true, email: true, role: true, isActive: true },
+        });
+        break;
+      } catch (dbErr) {
+        if (retries === 0) {
+          throw new UnauthorizedException('Authentication database error. Access denied.');
+        }
+        retries--;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
 
     if (!user || !user.isActive) {
       throw new UnauthorizedException('User account is inactive or disabled');

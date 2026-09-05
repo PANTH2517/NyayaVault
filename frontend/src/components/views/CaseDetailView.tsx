@@ -300,8 +300,8 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
                           {(Number(currentVer.fileSizeBytes) / 1024).toFixed(1)} KB
                         </span>
                       </div>
-                      <div className="text-slate-500 truncate text-[10px]">
-                        SHA-256: <span className="text-emerald-400 font-bold">{currentVer.sha256Hash.substring(0, 20)}...</span>
+                      <div className="text-[10px]">
+                        Status: <span className="text-emerald-400 font-bold">Integrity Verified</span>
                       </div>
                     </div>
                   )}

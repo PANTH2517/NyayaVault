@@ -13,6 +13,7 @@ import { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService, COOKIE_NAME, getCookieOptions } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { RegisterRequestDto } from './dto/register-request.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { PasswordResetRequestDto } from './dto/password-reset-request.dto';
 import { PasswordResetConfirmDto } from './dto/password-reset-confirm.dto';
@@ -25,6 +26,22 @@ import { RoleName } from '@prisma/client';
 @Controller('api/v1/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  /**
+   * POST /api/v1/auth/register
+   * Creates a pending registration request for ADMIN review.
+   */
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async register(
+    @Body() registerDto: RegisterRequestDto,
+    @Req() req: Request,
+  ) {
+    const ipAddress = req.ip || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return this.authService.register(registerDto, ipAddress, userAgent);
+  }
 
   /**
    * POST /api/v1/auth/login

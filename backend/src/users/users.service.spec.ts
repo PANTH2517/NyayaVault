@@ -10,8 +10,28 @@ describe('UsersService (Admin User Management)', () => {
   let service: UsersService;
 
   const mockUserDb = new Map<string, any>();
+  const mockRegDb = new Map<string, any>();
 
   const mockPrismaService = {
+    registrationRequest: {
+      findUnique: jest.fn().mockImplementation(async ({ where }) => {
+        if (where.id) return mockRegDb.get(where.id) || null;
+        if (where.email) {
+          for (const req of mockRegDb.values()) {
+            if (req.email === where.email) return req;
+          }
+        }
+        return null;
+      }),
+      findMany: jest.fn().mockImplementation(async () => {
+        return Array.from(mockRegDb.values());
+      }),
+      update: jest.fn().mockImplementation(async ({ where, data }) => {
+        const req = mockRegDb.get(where.id);
+        if (req) Object.assign(req, data);
+        return req;
+      }),
+    },
     user: {
       findMany: jest.fn().mockImplementation(async () => {
         return Array.from(mockUserDb.values()).map(({ passwordHash, refreshTokenHash, ...user }) => user);
@@ -157,6 +177,52 @@ describe('UsersService (Admin User Management)', () => {
         where: { userId: created.id, revokedAt: null },
         data: { revokedAt: expect.any(Date) },
       });
+    });
+  });
+
+  describe('4. Admin Registration Approval Workflow', () => {
+    it('should approve a pending registration and create active user account', async () => {
+      const regId = 'reg-req-101';
+      const passHash = await argon2.hash('SecretPass123!');
+      mockRegDb.set(regId, {
+        id: regId,
+        email: 'applicant.approved@nyayavault.gov.in',
+        fullName: 'Approved Officer',
+        passwordHash: passHash,
+        requestedRole: RoleName.INVESTIGATING_OFFICER,
+        status: 'PENDING',
+        reviewedById: null,
+        reviewedAt: null,
+        createdAt: new Date(),
+      });
+
+      const approvedUser = await service.approveRegistration(regId, 'admin-id-1');
+      expect(approvedUser.email).toBe('applicant.approved@nyayavault.gov.in');
+      expect(approvedUser.role).toBe(RoleName.INVESTIGATING_OFFICER);
+      expect(approvedUser.isActive).toBe(true);
+
+      const regRecord = mockRegDb.get(regId);
+      expect(regRecord.status).toBe('APPROVED');
+      expect(regRecord.reviewedById).toBe('admin-id-1');
+    });
+
+    it('should reject a pending registration with rejection reason', async () => {
+      const regId = 'reg-req-102';
+      mockRegDb.set(regId, {
+        id: regId,
+        email: 'applicant.rejected@nyayavault.gov.in',
+        fullName: 'Rejected Applicant',
+        passwordHash: 'hash',
+        requestedRole: RoleName.PROSECUTOR,
+        status: 'PENDING',
+        reviewedById: null,
+        reviewedAt: null,
+        createdAt: new Date(),
+      });
+
+      const rejectedRes = await service.rejectRegistration(regId, 'Incomplete verification documents', 'admin-id-1');
+      expect(rejectedRes.status).toBe('REJECTED');
+      expect(rejectedRes.rejectionReason).toBe('Incomplete verification documents');
     });
   });
 });

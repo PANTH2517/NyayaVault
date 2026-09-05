@@ -11,12 +11,12 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditChainService } from '../security/audit-chain.service';
 import { EmailService } from '../email/email.service';
-import { AuditEventType } from '@prisma/client';
+import { AuditEventType, RoleName, RegistrationStatus, User } from '@prisma/client';
 import { LoginDto } from './dto/login.dto';
+import { RegisterRequestDto } from './dto/register-request.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { PasswordResetRequestDto } from './dto/password-reset-request.dto';
 import { PasswordResetConfirmDto } from './dto/password-reset-confirm.dto';
-import { User } from '@prisma/client';
 
 export const COOKIE_NAME = 'nyaya_refresh_token';
 
@@ -77,14 +77,91 @@ export class AuthService implements OnModuleInit {
   /**
    * Authenticate user with email and password, creating a unique UserSession
    */
+  async register(registerDto: RegisterRequestDto, ipAddress?: string, userAgent?: string) {
+    const email = registerDto.email.trim().toLowerCase();
+
+    if (registerDto.requestedRole === RoleName.ADMIN) {
+      throw new ForbiddenException('ADMIN role cannot be requested through public registration');
+    }
+
+    const existingUser = await this.prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      throw new BadRequestException('Registration request could not be processed');
+    }
+
+    const existingRequest = await this.prisma.registrationRequest.findUnique({ where: { email } });
+    if (existingRequest) {
+      if (existingRequest.status === RegistrationStatus.PENDING) {
+        return {
+          message: 'Registration submitted',
+          status: 'PENDING',
+          detail: 'Your account is pending administrator approval.',
+        };
+      }
+      throw new BadRequestException('Registration request could not be processed');
+    }
+
+    const passwordHash = await argon2.hash(registerDto.password);
+
+    const regRequest = await this.prisma.registrationRequest.create({
+      data: {
+        email,
+        fullName: registerDto.fullName,
+        passwordHash,
+        requestedRole: registerDto.requestedRole,
+        status: RegistrationStatus.PENDING,
+      },
+    });
+
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.REGISTRATION_REQUESTED,
+      action: `Registration requested by ${registerDto.fullName} (${email}) for role ${registerDto.requestedRole}`,
+      ipAddress,
+      userAgent,
+      metadata: {
+        registrationRequestId: regRequest.id,
+        email,
+        requestedRole: registerDto.requestedRole,
+      },
+    });
+
+    return {
+      message: 'Registration submitted',
+      status: 'PENDING',
+      detail: 'Your account is pending administrator approval.',
+    };
+  }
+
   async login(loginDto: LoginDto, ipAddress?: string, userAgent?: string) {
-    const { email, password } = loginDto;
+    const email = loginDto.email.trim().toLowerCase();
+    const { password } = loginDto;
 
     const user = await this.prisma.user.findUnique({
       where: { email },
     });
 
-    if (!user || !user.isActive) {
+    if (!user) {
+      // Check if registration request exists
+      const regReq = await this.prisma.registrationRequest.findUnique({ where: { email } });
+      if (regReq) {
+        if (regReq.status === RegistrationStatus.PENDING) {
+          throw new ForbiddenException('Your registration is awaiting administrator approval.');
+        } else if (regReq.status === RegistrationStatus.REJECTED) {
+          throw new ForbiddenException('Your registration was not approved.');
+        }
+      }
+
+      await this.auditChainService.recordEvent({
+        eventType: AuditEventType.LOGIN_FAILED,
+        action: 'LOGIN_FAILURE',
+        ipAddress,
+        userAgent,
+        metadata: { emailAttempt: email },
+      });
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.isActive) {
       await this.auditChainService.recordEvent({
         eventType: AuditEventType.LOGIN_FAILED,
         action: 'LOGIN_FAILURE',

@@ -228,7 +228,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <AnimatedNumber value={stats.totalDocuments} />
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-800/80">
-            <span>SHA-256 Verified</span>
+            <span>Verified Integrity</span>
             <span className="text-sky-400 font-semibold flex items-center gap-0.5">
               Search <ArrowRight className="w-3 h-3" />
             </span>
@@ -283,7 +283,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               Recent Activity
             </h3>
             <p className="text-xs text-slate-400">
-              Real audit events recorded in immutable audit log.
+              Recent authorized operations recorded in audit log.
             </p>
           </div>
 
@@ -318,21 +318,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0 font-mono text-[10px]">
-                    <span className="hidden sm:inline-block text-slate-300 bg-slate-900 px-3 py-1 rounded-xl border border-slate-800">
-                      {evt.currentEventHash.substring(0, 16)}...
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20">
+                      Verified
                     </span>
-                    <button
-                      onClick={() => handleCopyHash(evt.currentEventHash)}
-                      className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800 cursor-pointer transition-colors"
-                      title="Copy event hash"
-                    >
-                      {copiedHash === evt.currentEventHash ? (
-                        <Check className="w-4 h-4 text-emerald-400" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
-                    </button>
                   </div>
                 </div>
               </MotionStaggerItem>

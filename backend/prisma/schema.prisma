@@ -56,6 +56,15 @@ enum AuditEventType {
   INTEGRITY_VERIFIED
   INTEGRITY_FAILED
   SECURITY_INCIDENT_CREATED
+  REGISTRATION_REQUESTED
+  REGISTRATION_APPROVED
+  REGISTRATION_REJECTED
+}
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum IncidentType {
@@ -84,26 +93,45 @@ enum IncidentStatus {
 // --------------------------------------------------------
 
 model User {
-  id                 String            @id @default(uuid())
-  email              String            @unique
-  passwordHash       String
-  fullName           String
-  role               RoleName          @default(INVESTIGATING_OFFICER)
-  refreshTokenHash   String?
-  isActive           Boolean           @default(true)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id                    String                @id @default(uuid())
+  email                 String                @unique
+  passwordHash          String
+  fullName              String
+  role                  RoleName              @default(INVESTIGATING_OFFICER)
+  refreshTokenHash      String?
+  isActive              Boolean               @default(true)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
-  caseAssignments    CaseAssignment[]
-  createdCases       Case[]            @relation("CaseCreator")
-  uploadedVersions   DocumentVersion[] @relation("VersionUploader")
-  auditEvents        AuditEvent[]
-  requestedApprovals Approval[]       @relation("ApprovalRequester")
-  decidedApprovals   Approval[]       @relation("ApprovalDecider")
-  sessions           UserSession[]
-  resetTokens        PasswordResetToken[]
+  caseAssignments       CaseAssignment[]
+  createdCases          Case[]                @relation("CaseCreator")
+  uploadedVersions      DocumentVersion[]     @relation("VersionUploader")
+  auditEvents           AuditEvent[]
+  requestedApprovals    Approval[]           @relation("ApprovalRequester")
+  decidedApprovals      Approval[]           @relation("ApprovalDecider")
+  sessions              UserSession[]
+  resetTokens           PasswordResetToken[]
+  reviewedRegistrations RegistrationRequest[] @relation("RegistrationReviewer")
 
   @@map("users")
+}
+
+model RegistrationRequest {
+  id              String             @id @default(uuid())
+  email           String             @unique
+  fullName        String
+  passwordHash    String
+  requestedRole   RoleName           @default(INVESTIGATING_OFFICER)
+  status          RegistrationStatus @default(PENDING)
+  reviewedById    String?
+  rejectionReason String?
+  reviewedAt      DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  reviewedBy      User?              @relation("RegistrationReviewer", fields: [reviewedById], references: [id])
+
+  @@map("registration_requests")
 }
 
 model PasswordResetToken {

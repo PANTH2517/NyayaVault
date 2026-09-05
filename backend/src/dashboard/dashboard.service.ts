@@ -11,29 +11,19 @@ export class DashboardService {
     const isAdmin = user.role === RoleName.ADMIN;
 
     if (isAdmin) {
-      const [
-        totalCases,
-        totalDocuments,
-        underReviewCount,
-        approvedCount,
-        sealedCount,
-        openIncidentsCount,
-        recentActivityRaw,
-      ] = await Promise.all([
-        this.prisma.case.count(),
-        this.prisma.document.count(),
-        this.prisma.document.count({ where: { currentStatus: 'UNDER_REVIEW' } }),
-        this.prisma.document.count({ where: { currentStatus: 'APPROVED' } }),
-        this.prisma.document.count({ where: { currentStatus: 'SEALED' } }),
-        this.prisma.securityIncident.count({ where: { status: 'OPEN' } }),
-        this.prisma.auditEvent.findMany({
-          orderBy: { sequenceNumber: 'desc' },
-          take: 10,
-          include: {
-            user: { select: { fullName: true, role: true, email: true } },
-          },
-        }),
-      ]);
+      const totalCases = await this.prisma.case.count();
+      const totalDocuments = await this.prisma.document.count();
+      const underReviewCount = await this.prisma.document.count({ where: { currentStatus: 'UNDER_REVIEW' } });
+      const approvedCount = await this.prisma.document.count({ where: { currentStatus: 'APPROVED' } });
+      const sealedCount = await this.prisma.document.count({ where: { currentStatus: 'SEALED' } });
+      const openIncidentsCount = await this.prisma.securityIncident.count({ where: { status: 'OPEN' } });
+      const recentActivityRaw = await this.prisma.auditEvent.findMany({
+        orderBy: { sequenceNumber: 'desc' },
+        take: 10,
+        include: {
+          user: { select: { fullName: true, role: true, email: true } },
+        },
+      });
 
       const recentActivity = recentActivityRaw.map((event) => ({
         ...event,
@@ -58,43 +48,33 @@ export class DashboardService {
 
       const assignedCaseIds = assignedAssignments.map((a) => a.caseId);
 
-      const [
-        totalCases,
-        totalDocuments,
-        underReviewCount,
-        approvedCount,
-        sealedCount,
-        openIncidentsCount,
-        recentActivityRaw,
-      ] = await Promise.all([
-        assignedCaseIds.length,
-        this.prisma.document.count({ where: { caseId: { in: assignedCaseIds } } }),
-        this.prisma.document.count({
-          where: { caseId: { in: assignedCaseIds }, currentStatus: 'UNDER_REVIEW' },
-        }),
-        this.prisma.document.count({
-          where: { caseId: { in: assignedCaseIds }, currentStatus: 'APPROVED' },
-        }),
-        this.prisma.document.count({
-          where: { caseId: { in: assignedCaseIds }, currentStatus: 'SEALED' },
-        }),
-        this.prisma.securityIncident.count({
-          where: { caseId: { in: assignedCaseIds }, status: 'OPEN' },
-        }),
-        this.prisma.auditEvent.findMany({
-          where: {
-            OR: [
-              { caseId: { in: assignedCaseIds } },
-              { userId: user.userId },
-            ],
-          },
-          orderBy: { sequenceNumber: 'desc' },
-          take: 10,
-          include: {
-            user: { select: { fullName: true, role: true, email: true } },
-          },
-        }),
-      ]);
+      const totalCases = assignedCaseIds.length;
+      const totalDocuments = await this.prisma.document.count({ where: { caseId: { in: assignedCaseIds } } });
+      const underReviewCount = await this.prisma.document.count({
+        where: { caseId: { in: assignedCaseIds }, currentStatus: 'UNDER_REVIEW' },
+      });
+      const approvedCount = await this.prisma.document.count({
+        where: { caseId: { in: assignedCaseIds }, currentStatus: 'APPROVED' },
+      });
+      const sealedCount = await this.prisma.document.count({
+        where: { caseId: { in: assignedCaseIds }, currentStatus: 'SEALED' },
+      });
+      const openIncidentsCount = await this.prisma.securityIncident.count({
+        where: { caseId: { in: assignedCaseIds }, status: 'OPEN' },
+      });
+      const recentActivityRaw = await this.prisma.auditEvent.findMany({
+        where: {
+          OR: [
+            { caseId: { in: assignedCaseIds } },
+            { userId: user.userId },
+          ],
+        },
+        orderBy: { sequenceNumber: 'desc' },
+        take: 10,
+        include: {
+          user: { select: { fullName: true, role: true, email: true } },
+        },
+      });
 
       const recentActivity = recentActivityRaw.map((event) => ({
         ...event,

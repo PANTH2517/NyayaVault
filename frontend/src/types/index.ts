@@ -5,6 +5,23 @@ export type DocumentStatus = 'DRAFT' | 'UNDER_REVIEW' | 'APPROVED' | 'SEALED';
 export type IncidentType = 'DOCUMENT_TAMPER_DETECTED' | 'AUDIT_CHAIN_VERIFICATION_FAILED' | 'REPEATED_UNAUTHORIZED_ACCESS' | 'SUSPICIOUS_DOCUMENT_ACTION';
 export type IncidentSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type IncidentStatus = 'OPEN' | 'INVESTIGATING' | 'RESOLVED' | 'DISMISSED';
+export type RegistrationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface RegistrationRequest {
+  id: string;
+  email: string;
+  fullName: string;
+  requestedRole: RoleName;
+  status: RegistrationStatus;
+  rejectionReason?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  reviewedBy?: {
+    id: string;
+    fullName: string;
+    email: string;
+  };
+}
 
 export interface User {
   id: string;
@@ -12,6 +29,7 @@ export interface User {
   fullName: string;
   role: RoleName;
   isActive?: boolean;
+  createdAt?: string;
 }
 
 export interface CaseAssignment {

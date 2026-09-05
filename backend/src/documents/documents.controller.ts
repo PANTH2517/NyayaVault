@@ -46,6 +46,7 @@ export class DocumentsController {
    * Multipart upload initial document (v1) for case
    */
   @Post('cases/:caseId/documents')
+  @UseGuards(CaseAccessGuard)
   @UseInterceptors(FileInterceptor('file'))
   @HttpCode(HttpStatus.CREATED)
   async uploadDocument(
@@ -84,7 +85,7 @@ export class DocumentsController {
     @Param('id') documentId: string,
     @Param('versionId') versionId: string,
     @CurrentUser() user: UserPayload,
-    @Res() res: Response,
+    @Res({ passthrough: true }) res: Response,
   ) {
     const download = await this.documentsService.downloadVersionWithIntegrityCheck(
       documentId,

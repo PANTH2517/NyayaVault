@@ -2,11 +2,10 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditChainService } from '../security/audit-chain.service';
-import { AuditEventType } from '@prisma/client';
+import { AuditEventType, RegistrationStatus, User } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
-import { User } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
@@ -145,6 +144,142 @@ export class UsersService {
     }
 
     return this.sanitizeUser(updatedUser);
+  }
+
+  /**
+   * List all registration requests (ADMIN only)
+   */
+  async getPendingRegistrations() {
+    const requests = await this.prisma.registrationRequest.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        requestedRole: true,
+        status: true,
+        rejectionReason: true,
+        reviewedAt: true,
+        createdAt: true,
+        reviewedBy: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    });
+    return requests;
+  }
+
+  /**
+   * Approve a pending registration request (ADMIN only)
+   */
+  async approveRegistration(id: string, adminUserId: string) {
+    const regReq = await this.prisma.registrationRequest.findUnique({
+      where: { id },
+    });
+
+    if (!regReq) {
+      throw new NotFoundException(`Registration request with ID '${id}' not found`);
+    }
+
+    if (regReq.status !== RegistrationStatus.PENDING) {
+      throw new ConflictException(`Registration request is already ${regReq.status}`);
+    }
+
+    // Check if user account already exists
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: regReq.email },
+    });
+
+    let user: User;
+    if (existingUser) {
+      user = existingUser;
+    } else {
+      user = await this.prisma.user.create({
+        data: {
+          email: regReq.email,
+          fullName: regReq.fullName,
+          passwordHash: regReq.passwordHash,
+          role: regReq.requestedRole,
+          isActive: true,
+        },
+      });
+    }
+
+    await this.prisma.registrationRequest.update({
+      where: { id },
+      data: {
+        status: RegistrationStatus.APPROVED,
+        reviewedById: adminUserId,
+        reviewedAt: new Date(),
+      },
+    });
+
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.REGISTRATION_APPROVED,
+      userId: adminUserId,
+      action: `Approved registration for ${regReq.fullName} (${regReq.email}) as ${regReq.requestedRole}`,
+      metadata: {
+        registrationRequestId: id,
+        email: regReq.email,
+        requestedRole: regReq.requestedRole,
+      },
+    });
+
+    return this.sanitizeUser(user);
+  }
+
+  /**
+   * Reject a pending registration request (ADMIN only)
+   */
+  async rejectRegistration(id: string, rejectionReason: string | undefined, adminUserId: string) {
+    const regReq = await this.prisma.registrationRequest.findUnique({
+      where: { id },
+    });
+
+    if (!regReq) {
+      throw new NotFoundException(`Registration request with ID '${id}' not found`);
+    }
+
+    if (regReq.status !== RegistrationStatus.PENDING) {
+      throw new ConflictException(`Registration request is already ${regReq.status}`);
+    }
+
+    const updated = await this.prisma.registrationRequest.update({
+      where: { id },
+      data: {
+        status: RegistrationStatus.REJECTED,
+        rejectionReason: rejectionReason || null,
+        reviewedById: adminUserId,
+        reviewedAt: new Date(),
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        requestedRole: true,
+        status: true,
+        rejectionReason: true,
+        reviewedAt: true,
+        createdAt: true,
+      },
+    });
+
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.REGISTRATION_REJECTED,
+      userId: adminUserId,
+      action: `Rejected registration for ${regReq.fullName} (${regReq.email})`,
+      metadata: {
+        registrationRequestId: id,
+        email: regReq.email,
+        rejectionReason,
+      },
+    });
+
+    return updated;
   }
 
   /**

@@ -570,16 +570,10 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
                     </p>
                   )}
 
-                  <div className="font-mono text-[10px] text-slate-400 truncate flex items-center gap-1.5">
-                    <span className="text-slate-500">SHA-256:</span>
-                    <span className="text-slate-300 truncate">{ver.sha256Hash}</span>
-                    <button
-                      onClick={() => handleCopyHash(ver.sha256Hash)}
-                      className="text-amber-400 hover:text-amber-300 ml-1 cursor-pointer"
-                      title="Copy Hash"
-                    >
-                      <Copy className="w-3 h-3" />
-                    </button>
+                  <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                    <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">
+                      Integrity Verified
+                    </span>
                   </div>
                 </div>
 
@@ -657,15 +651,49 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
         )}
       </div>
 
-      {/* COMPACT HASH FINGERPRINT VISUALIZER */}
+      {/* SECONDARY TECHNICAL SECURITY DETAILS (COLLAPSIBLE) */}
       {selectedVer && (
-        <div className="space-y-4">
-          <HashComparisonVisualizer
-            trustedHash={selectedVer.sha256Hash}
-            computedHash={computedByteHash || selectedVer.sha256Hash}
-            isMatch={integrityState !== 'COMPROMISED'}
-          />
-        </div>
+        <details className="group rounded-3xl bg-slate-900/90 border border-slate-800 p-6 shadow-xl backdrop-blur-xl transition-all">
+          <summary className="cursor-pointer text-sm font-bold text-slate-200 flex items-center justify-between select-none">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-amber-400" />
+              <span>Technical Security & Cryptographic Details</span>
+              <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-mono font-bold">
+                VERIFIED
+              </span>
+            </div>
+            <span className="text-xs font-semibold text-amber-400 group-open:hidden">
+              Show Technical Details
+            </span>
+            <span className="text-xs font-semibold text-slate-400 hidden group-open:inline">
+              Hide Technical Details
+            </span>
+          </summary>
+
+          <div className="mt-4 pt-4 border-t border-slate-800/80 space-y-4">
+            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-slate-300 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 font-bold">Trusted Database SHA-256:</span>
+                <button
+                  onClick={() => handleCopyHash(selectedVer.sha256Hash)}
+                  className="text-amber-400 hover:text-amber-300 text-xs font-sans font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  {copiedHash === selectedVer.sha256Hash ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedHash === selectedVer.sha256Hash ? 'Copied' : 'Copy Full Hash'}</span>
+                </button>
+              </div>
+              <div className="text-slate-200 break-all text-[11px] bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+                {selectedVer.sha256Hash}
+              </div>
+            </div>
+
+            <HashComparisonVisualizer
+              trustedHash={selectedVer.sha256Hash}
+              computedHash={computedByteHash || selectedVer.sha256Hash}
+              isMatch={integrityState !== 'COMPROMISED'}
+            />
+          </div>
+        </details>
       )}
 
       {/* Revision Upload Modal */}

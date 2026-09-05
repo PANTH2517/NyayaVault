@@ -68,8 +68,9 @@ export class CasesController {
   async update(
     @Param('id') caseId: string,
     @Body() updateCaseDto: UpdateCaseDto,
+    @CurrentUser() user: UserPayload,
   ) {
-    return this.casesService.updateCase(caseId, updateCaseDto);
+    return this.casesService.updateCase(caseId, updateCaseDto, user);
   }
 
   /**

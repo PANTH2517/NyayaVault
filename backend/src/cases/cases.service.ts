@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCaseDto } from './dto/create-case.dto';
 import { UpdateCaseDto } from './dto/update-case.dto';
@@ -103,9 +103,13 @@ export class CasesService {
   }
 
   /**
-   * Update case details (Protected by CBAC guard)
+   * Update case details (Protected by CBAC guard & Role check)
    */
-  async updateCase(caseId: string, updateCaseDto: UpdateCaseDto) {
+  async updateCase(caseId: string, updateCaseDto: UpdateCaseDto, user: UserPayload) {
+    if (user.role === RoleName.SUPERVISOR || user.role === RoleName.PROSECUTOR) {
+      throw new ForbiddenException(`Role '${user.role}' is not authorized to edit case metadata`);
+    }
+
     await this.findOne(caseId); // Verify existence
 
     return this.prisma.case.update({

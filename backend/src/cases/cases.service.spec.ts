@@ -327,4 +327,28 @@ describe('CasesModule & CBAC Test Suite (Milestone 4)', () => {
     );
     expect(casesForIO.every((c) => c.id === case1.id)).toBe(true);
   });
+
+  // --------------------------------------------------------
+  // Test Scenario 12: SUPERVISOR & PROSECUTOR cannot edit case metadata
+  // --------------------------------------------------------
+  it('12. SUPERVISOR and PROSECUTOR are denied from editing case metadata (403 Forbidden)', async () => {
+    await expect(
+      casesService.updateCase(case1.id, { title: 'Unauthorized Edit' }, supervisorUser),
+    ).rejects.toThrow(ForbiddenException);
+
+    await expect(
+      casesService.updateCase(case1.id, { title: 'Unauthorized Edit' }, prosecutorUser),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  // --------------------------------------------------------
+  // Test Scenario 13: ADMIN & INVESTIGATING_OFFICER can edit case metadata
+  // --------------------------------------------------------
+  it('13. ADMIN and INVESTIGATING_OFFICER are authorized to edit case metadata', async () => {
+    const updatedByAdmin = await casesService.updateCase(case1.id, { title: 'Updated Heist Title' }, adminUser);
+    expect(updatedByAdmin).toHaveProperty('title');
+
+    const updatedByIO = await casesService.updateCase(case1.id, { title: 'Updated Heist Title 2' }, ioUser);
+    expect(updatedByIO).toHaveProperty('title');
+  });
 });

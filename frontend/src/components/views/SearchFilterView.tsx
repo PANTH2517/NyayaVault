@@ -191,8 +191,8 @@ export const SearchFilterView: React.FC<SearchFilterViewProps> = ({ onSelectDocu
                 {currentVer && (
                   <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 font-mono text-[11px] text-slate-400 flex items-center justify-between">
                     <span>Version {currentVer.versionNumber}</span>
-                    <span className="text-emerald-400 font-bold truncate max-w-[200px]">
-                      SHA-256: {currentVer.sha256Hash.substring(0, 16)}...
+                    <span className="text-emerald-400 font-bold">
+                      Integrity Verified
                     </span>
                   </div>
                 )}

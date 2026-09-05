@@ -16,6 +16,7 @@ import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser, UserPayload } from '../auth/decorators/current-user.decorator';
 import { RoleName } from '@prisma/client';
 
 @Controller('api/v1/admin/users')
@@ -31,6 +32,42 @@ export class UsersController {
   @Get()
   async findAll() {
     return this.usersService.findAll();
+  }
+
+  /**
+   * GET /api/v1/admin/users/registrations/all
+   * List all registration requests (ADMIN only)
+   */
+  @Get('registrations/all')
+  async getPendingRegistrations() {
+    return this.usersService.getPendingRegistrations();
+  }
+
+  /**
+   * POST /api/v1/admin/users/registrations/:id/approve
+   * Approve a pending registration request (ADMIN only)
+   */
+  @Post('registrations/:id/approve')
+  @HttpCode(HttpStatus.OK)
+  async approveRegistration(
+    @Param('id') id: string,
+    @CurrentUser() adminUser: UserPayload,
+  ) {
+    return this.usersService.approveRegistration(id, adminUser.userId);
+  }
+
+  /**
+   * POST /api/v1/admin/users/registrations/:id/reject
+   * Reject a pending registration request (ADMIN only)
+   */
+  @Post('registrations/:id/reject')
+  @HttpCode(HttpStatus.OK)
+  async rejectRegistration(
+    @Param('id') id: string,
+    @Body('rejectionReason') rejectionReason: string | undefined,
+    @CurrentUser() adminUser: UserPayload,
+  ) {
+    return this.usersService.rejectRegistration(id, rejectionReason, adminUser.userId);
   }
 
   /**

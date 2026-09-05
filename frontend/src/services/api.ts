@@ -12,6 +12,7 @@ import {
   DocumentStatus,
   IncidentStatus,
   RoleName,
+  RegistrationRequest,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -395,6 +396,39 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ versionId }),
+    });
+  },
+
+  // Public Registration
+  async register(payload: {
+    email: string;
+    fullName: string;
+    password: string;
+    requestedRole: RoleName;
+  }) {
+    return request<{ message: string; status: string; detail: string }>('/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // ADMIN Registration Approval
+  async getPendingRegistrations() {
+    return request<RegistrationRequest[]>('/admin/users/registrations/all');
+  },
+
+  async approveRegistration(id: string) {
+    return request<User>(`/admin/users/registrations/${id}/approve`, {
+      method: 'POST',
+    });
+  },
+
+  async rejectRegistration(id: string, rejectionReason?: string) {
+    return request<RegistrationRequest>(`/admin/users/registrations/${id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rejectionReason }),
     });
   },
 };
