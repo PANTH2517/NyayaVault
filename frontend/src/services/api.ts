@@ -82,7 +82,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}, isRetry =
     credentials: 'include',
   });
 
-  if (response.status === 401 && !isRetry && endpoint !== '/auth/login' && endpoint !== '/auth/refresh') {
+  if (response.status === 401 && !isRetry && endpoint !== '/auth/login' && endpoint !== '/auth/refresh' && endpoint !== '/auth/mfa/verify') {
     // Access token expired: attempt silent refresh using HTTP-only cookie
     const newToken = await refreshAccessToken();
     if (newToken) {
@@ -126,6 +126,62 @@ export const api = {
       setAccessToken(accessToken);
     }
     return data;
+  },
+
+  async verifyMfaLogin(mfaChallengeToken: string, code: string) {
+    const data = await request<any>('/auth/mfa/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mfaChallengeToken, code }),
+    });
+
+    const accessToken = data.accessToken || data.tokens?.accessToken;
+    if (accessToken) {
+      setAccessToken(accessToken);
+    }
+    return data;
+  },
+
+  async getMfaStatus() {
+    return request<{ enabled: boolean; enrolledAt: string | null; recoveryCodesRemaining: number }>('/auth/mfa/status');
+  },
+
+  async enrollMfa(currentPassword: string) {
+    return request<{ qrCodeUrl: string; secret: string; otpauthUrl: string }>('/auth/mfa/enroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword }),
+    });
+  },
+
+  async confirmMfaEnrollment(code: string) {
+    return request<{ success: boolean; recoveryCodes: string[] }>('/auth/mfa/enroll/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+  },
+
+  async disableMfa(currentPassword: string, code: string) {
+    return request<{ message: string }>('/auth/mfa/disable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, code }),
+    });
+  },
+
+  async regenerateRecoveryCodes(currentPassword: string, code: string) {
+    return request<{ recoveryCodes: string[] }>('/auth/mfa/recovery-codes/regenerate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, code }),
+    });
+  },
+
+  async adminResetMfa(userId: string) {
+    return request<{ message: string }>(`/admin/users/${userId}/mfa/reset`, {
+      method: 'POST',
+    });
   },
 
   async me() {
@@ -431,4 +487,59 @@ export const api = {
       body: JSON.stringify({ rejectionReason }),
     });
   },
+
+  // Blockchain Integration
+  async getBlockchainStatus() {
+    return request<any>('/blockchain/status');
+  },
+
+  async getBlockchainAnchor(versionId: string) {
+    return request<any>(`/blockchain/evidence/${versionId}`);
+  },
+
+  async verifyBlockchainEvidence(versionId: string) {
+    return request<any>(`/blockchain/verify/evidence/${versionId}`);
+  },
+
+  async getBlockchainProvenance(versionId: string) {
+    return request<any>(`/blockchain/provenance/${versionId}`);
+  },
+
+  async verifyBlockchainAudit() {
+    return request<any>('/blockchain/verify/audit');
+  },
+
+  // Continuous Scheduled Integrity Monitoring
+  async getIntegrityMonitoringStatus() {
+    return request<{
+      enabled: boolean;
+      intervalSeconds: number;
+      batchSize: number;
+      monitoringMode: string;
+      isScanInProgress: boolean;
+      lastScanStarted: string | null;
+      lastScanCompleted: string | null;
+      lastSuccessfulScan: string | null;
+      versionsChecked: number;
+      integrityFailuresDetected: number;
+      operationalErrors: number;
+      lastError: string | null;
+      lastScanDurationMs: number | null;
+    }>('/integrity-monitoring/status');
+  },
+
+  async triggerIntegrityScan() {
+    return request<{
+      startedAt: string;
+      completedAt: string;
+      durationMs: number;
+      versionsChecked: number;
+      failuresDetected: number;
+      operationalErrors: number;
+      processedVersionIds: string[];
+    }>('/integrity-monitoring/scan', {
+      method: 'POST',
+    });
+  },
 };
+

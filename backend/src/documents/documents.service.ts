@@ -15,6 +15,8 @@ import { UserPayload } from '../auth/decorators/current-user.decorator';
 import { AuditChainService } from '../security/audit-chain.service';
 import { DocumentIntegrityService } from '../security/document-integrity.service';
 import { SecurityIncidentsService } from '../security/security-incidents.service';
+import { BlockchainIntegrationService } from '../blockchain/integration/blockchain-integration.service';
+import { DocumentEncryptionService } from './document-encryption.service';
 import {
   RoleName,
   DocumentClassification,
@@ -45,6 +47,8 @@ export class DocumentsService {
     private readonly auditChainService: AuditChainService,
     private readonly integrityService: DocumentIntegrityService,
     private readonly incidentsService: SecurityIncidentsService,
+    private readonly blockchainIntegrationService: BlockchainIntegrationService,
+    private readonly encryptionService: DocumentEncryptionService,
   ) {}
 
   /**
@@ -70,19 +74,22 @@ export class DocumentsService {
     // 3. Server-side File Validation
     this.validateFile(file);
 
-    // 4. Server-side SHA-256 Hash Computation from raw file bytes
+    // 4. Server-side SHA-256 Hash Computation from raw plaintext file bytes
     const sha256Hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
 
-    // 5. Generate controlled IDs and storage path
+    // 5. AES-256-GCM Encryption over raw plaintext bytes
+    const { encryptedBuffer, metadata } = this.encryptionService.encryptDocumentBytes(file.buffer);
+
+    // 6. Generate controlled IDs and storage path
     const documentId = crypto.randomUUID();
     const generatedFileId = crypto.randomUUID();
     const versionNumber = 1;
     const storagePath = `cases/${caseId}/documents/${documentId}/versions/${versionNumber}/${generatedFileId}`;
 
-    // 6. Upload file bytes to private Supabase Storage
-    await this.storageService.uploadFile(storagePath, file.buffer, file.mimetype);
+    // 7. Upload ONLY encrypted bytes to private Supabase Storage
+    await this.storageService.uploadFile(storagePath, encryptedBuffer, file.mimetype);
 
-    // 7. Persist Document & DocumentVersion in Prisma Transaction with failure cleanup
+    // 8. Persist Document & DocumentVersion in Prisma Transaction with failure cleanup
     try {
       const result = await this.prisma.$transaction(
         async (tx) => {
@@ -106,6 +113,9 @@ export class DocumentsService {
               fileSizeBytes: BigInt(file.size),
               mimeType: file.mimetype,
               sha256Hash,
+              encryptionVersion: metadata.version,
+              encryptionKeyVersion: metadata.keyVersion,
+              isEncrypted: true,
               createdById: user.userId,
             },
           });
@@ -140,6 +150,19 @@ export class DocumentsService {
           mimeType: file.mimetype,
         },
       });
+
+      // 9. Anchor EVIDENCE_CREATED on Permissioned Blockchain
+      try {
+        await this.blockchainIntegrationService.anchorEvidenceCreation(
+          caseId,
+          documentId,
+          result.version.id,
+          sha256Hash,
+          user.role as any,
+        );
+      } catch (bcError: any) {
+        this.logger.warn(`Blockchain anchoring queued with warning: ${bcError.message}`);
+      }
 
       return result;
     } catch (dbError: any) {
@@ -177,8 +200,11 @@ export class DocumentsService {
     // Validate File Rules
     this.validateFile(file);
 
-    // Compute Server-side SHA-256 from raw bytes
+    // Compute Server-side SHA-256 from raw plaintext bytes
     const sha256Hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+
+    // AES-256-GCM Encryption over raw plaintext bytes
+    const { encryptedBuffer, metadata } = this.encryptionService.encryptDocumentBytes(file.buffer);
 
     // Get latest version number
     const latestVersion = await this.prisma.documentVersion.findFirst({
@@ -190,8 +216,8 @@ export class DocumentsService {
     const generatedFileId = crypto.randomUUID();
     const storagePath = `cases/${document.caseId}/documents/${documentId}/versions/${nextVersionNumber}/${generatedFileId}`;
 
-    // Upload new revision bytes to private Supabase Storage
-    await this.storageService.uploadFile(storagePath, file.buffer, file.mimetype);
+    // Upload ONLY encrypted bytes to private Supabase Storage
+    await this.storageService.uploadFile(storagePath, encryptedBuffer, file.mimetype);
 
     try {
       const result = await this.prisma.$transaction(
@@ -204,6 +230,9 @@ export class DocumentsService {
               fileSizeBytes: BigInt(file.size),
               mimeType: file.mimetype,
               sha256Hash,
+              encryptionVersion: metadata.version,
+              encryptionKeyVersion: metadata.keyVersion,
+              isEncrypted: true,
               changeDescription: changeDescription || null,
               createdById: user.userId,
             },
@@ -240,6 +269,20 @@ export class DocumentsService {
           changeDescription,
         },
       });
+
+      // Anchor EVIDENCE_VERSION_CREATED on Permissioned Blockchain
+      try {
+        await this.blockchainIntegrationService.anchorVersionCreation(
+          document.caseId,
+          documentId,
+          result.version.id,
+          nextVersionNumber,
+          sha256Hash,
+          user.role as any,
+        );
+      } catch (bcError: any) {
+        this.logger.warn(`Blockchain version anchoring queued with warning: ${bcError.message}`);
+      }
 
       return result;
     } catch (dbError: any) {
@@ -301,7 +344,7 @@ export class DocumentsService {
         });
 
         // Automatically create Security Incident (with deduplication)
-        await this.incidentsService.createIncident({
+        const incident = await this.incidentsService.createIncident({
           incidentType: IncidentType.DOCUMENT_TAMPER_DETECTED,
           severity: IncidentSeverity.CRITICAL,
           caseId: document.caseId,
@@ -309,8 +352,19 @@ export class DocumentsService {
           versionId,
           description: `SECURITY ALERT: Tamper detected for document '${document.title}' (Version ${version.versionNumber}). Expected SHA-256: ${integrity.expectedHash}, Actual: ${integrity.actualHash}`,
         });
+
+        // Anchor Tamper Incident to Blockchain
+        await this.blockchainIntegrationService.anchorTamperIncident(
+          document.caseId,
+          documentId,
+          versionId,
+          integrity.expectedHash,
+          integrity.actualHash || '',
+          incident?.id || 'tamper-incident-1',
+          user.role as any,
+        );
       } catch (err: any) {
-        this.logger.error(`Error recording tamper incident/audit: ${err.message}`);
+        this.logger.error(`Error recording tamper incident/audit/blockchain anchor: ${err.message}`);
       }
 
       // ALWAYS BLOCK ACCESS FAIL-CLOSED
@@ -339,15 +393,16 @@ export class DocumentsService {
       action: `Downloaded document '${document.title}' version ${version.versionNumber}`,
     });
 
-    // 4. Download file bytes securely
-    const buffer = await this.storageService.downloadFileBytes(version.storagePath);
+    // 4. Download file bytes securely from storage and decrypt AES-256-GCM envelope
+    const storedBuffer = await this.storageService.downloadFileBytes(version.storagePath);
+    const { plaintext } = this.encryptionService.decryptDocumentBytes(storedBuffer, version.isEncrypted ?? false);
 
     return {
       filename: `${document.title}_v${version.versionNumber}`,
       mimeType: version.mimeType,
       fileSizeBytes: version.fileSizeBytes.toString(),
       sha256Hash: version.sha256Hash,
-      buffer,
+      buffer: plaintext,
     };
   }
 
@@ -634,6 +689,25 @@ export class DocumentsService {
       },
     });
 
+    // Anchor to Blockchain (non-blocking failure path)
+    try {
+      const targetVersion = await this.prisma.documentVersion.findUnique({
+        where: { id: dto.versionId },
+        select: { sha256Hash: true },
+      });
+      if (targetVersion) {
+        await this.blockchainIntegrationService.anchorDocumentApproval(
+          document.caseId,
+          documentId,
+          dto.versionId,
+          result.id,
+          user.role as any,
+        );
+      }
+    } catch (bcError: any) {
+      this.logger.warn(`Blockchain approval anchoring queued with warning: ${bcError.message}`);
+    }
+
     return result;
   }
 
@@ -686,6 +760,27 @@ export class DocumentsService {
         newStatus: DocumentStatus.SEALED,
       },
     });
+
+    // Anchor to Blockchain (non-blocking failure path)
+    try {
+      if (document.currentVersionId) {
+        const targetVersion = await this.prisma.documentVersion.findUnique({
+          where: { id: document.currentVersionId },
+          select: { sha256Hash: true },
+        });
+        if (targetVersion) {
+          await this.blockchainIntegrationService.anchorDocumentSealing(
+            document.caseId,
+            documentId,
+            document.currentVersionId,
+            targetVersion.sha256Hash,
+            user.role as any,
+          );
+        }
+      }
+    } catch (bcError: any) {
+      this.logger.warn(`Blockchain sealing anchoring queued with warning: ${bcError.message}`);
+    }
 
     return updatedDocument;
   }

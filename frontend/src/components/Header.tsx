@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { RoleName, Case, Document } from '../types';
 import { api } from '../services/api';
 
+import { MfaSettingsModal } from './auth/MfaSettingsModal';
+
 interface HeaderProps {
   onSelectCase?: (caseId: string) => void;
   onSelectDocument?: (docId: string) => void;
@@ -12,6 +14,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }) => {
   const { user, logout } = useAuth();
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isMfaModalOpen, setIsMfaModalOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -259,6 +262,14 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
           </div>
 
           <button
+            onClick={() => setIsMfaModalOpen(true)}
+            className="p-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-amber-400 border border-slate-700 transition-all cursor-pointer"
+            title="Multi-Factor Authentication settings"
+          >
+            <ShieldCheck className="w-4 h-4" />
+          </button>
+
+          <button
             onClick={() => setIsPasswordModalOpen(true)}
             className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
             title="Change password"
@@ -275,6 +286,11 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
           </button>
         </div>
       )}
+
+      <MfaSettingsModal
+        isOpen={isMfaModalOpen}
+        onClose={() => setIsMfaModalOpen(false)}
+      />
 
       {/* Change Password Modal */}
       {isPasswordModalOpen && (

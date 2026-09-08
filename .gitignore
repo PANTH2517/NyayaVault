@@ -37,3 +37,5 @@ logs/
 coverage/
 .clinic/
 .gemini/
+test-results.json
+

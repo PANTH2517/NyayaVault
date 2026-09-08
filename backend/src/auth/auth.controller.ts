@@ -23,6 +23,15 @@ import { Roles } from './decorators/roles.decorator';
 import { CurrentUser, UserPayload } from './decorators/current-user.decorator';
 import { RoleName } from '@prisma/client';
 
+import {
+  VerifyMfaLoginDto,
+  MfaEnrollInitiateDto,
+  MfaEnrollConfirmDto,
+  MfaDisableDto,
+  MfaRegenerateRecoveryCodesDto,
+} from './dto/mfa-verify.dto';
+import { Param } from '@nestjs/common';
+
 @Controller('api/v1/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -45,7 +54,7 @@ export class AuthController {
 
   /**
    * POST /api/v1/auth/login
-   * Authenticates credentials, generates tokens, and sets HTTP-only refresh cookie.
+   * Authenticates credentials. If MFA enabled, returns short-lived mfaChallengeToken without access/refresh tokens.
    */
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -60,13 +69,127 @@ export class AuthController {
 
     const result = await this.authService.login(loginDto, ipAddress, userAgent);
 
-    // Set HTTP-only refresh token cookie
+    if ('mfaRequired' in result && result.mfaRequired) {
+      return result;
+    }
+
+    // Set HTTP-only refresh token cookie for non-MFA login completion
+    res.cookie(COOKIE_NAME, (result as any).refreshToken, getCookieOptions());
+
+    return {
+      accessToken: (result as any).accessToken,
+      user: (result as any).user,
+    };
+  }
+
+  /**
+   * POST /api/v1/auth/mfa/verify
+   * Verify MFA login challenge with TOTP code or Recovery Code
+   */
+  @Post('mfa/verify')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async verifyMfa(
+    @Body() dto: VerifyMfaLoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const ipAddress = req.ip || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    const result = await this.authService.verifyMfaLogin(dto, ipAddress, userAgent);
+
     res.cookie(COOKIE_NAME, result.refreshToken, getCookieOptions());
 
     return {
       accessToken: result.accessToken,
       user: result.user,
     };
+  }
+
+  /**
+   * POST /api/v1/auth/mfa/enroll
+   * Initiate self-service MFA enrollment
+   */
+  @Post('mfa/enroll')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async initiateMfaEnroll(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: MfaEnrollInitiateDto,
+  ) {
+    return this.authService.initiateMfaEnrollment(userId, dto.currentPassword);
+  }
+
+  /**
+   * POST /api/v1/auth/mfa/enroll/confirm
+   * Confirm self-service MFA enrollment with TOTP code
+   */
+  @Post('mfa/enroll/confirm')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async confirmMfaEnroll(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: MfaEnrollConfirmDto,
+  ) {
+    return this.authService.confirmMfaEnrollment(userId, dto.totpCode);
+  }
+
+  /**
+   * GET /api/v1/auth/mfa/status
+   * Fetch current user MFA status
+   */
+  @Get('mfa/status')
+  @UseGuards(JwtAuthGuard)
+  async getMfaStatus(@CurrentUser('userId') userId: string) {
+    return this.authService.getMfaStatus(userId);
+  }
+
+  /**
+   * POST /api/v1/auth/mfa/disable
+   * Self-service MFA disable
+   */
+  @Post('mfa/disable')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async disableMfa(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: MfaDisableDto,
+  ) {
+    return this.authService.disableMfa(userId, dto);
+  }
+
+  /**
+   * POST /api/v1/auth/mfa/recovery-codes/regenerate
+   * Regenerate emergency recovery codes
+   */
+  @Post('mfa/recovery-codes/regenerate')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async regenerateRecoveryCodes(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: MfaRegenerateRecoveryCodesDto,
+  ) {
+    return this.authService.regenerateRecoveryCodes(userId, dto);
+  }
+
+  /**
+   * POST /api/v1/auth/admin/users/:userId/mfa/reset
+   * ADMIN-only MFA reset for target user account recovery
+   */
+  @Post('admin/users/:userId/mfa/reset')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async adminResetMfa(
+    @Param('userId') targetUserId: string,
+    @CurrentUser('userId') adminUserId: string,
+  ) {
+    return this.authService.adminResetMfa(targetUserId, adminUserId);
   }
 
   /**

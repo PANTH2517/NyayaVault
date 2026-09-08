@@ -98,7 +98,7 @@ export class AuditChainService {
         ...auditEvent,
         sequenceNumber: auditEvent.sequenceNumber.toString(),
       };
-    });
+    }, { maxWait: 10000, timeout: 25000 });
   }
 
   /**

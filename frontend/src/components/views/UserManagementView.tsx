@@ -111,6 +111,18 @@ export const UserManagementView: React.FC = () => {
     }
   };
 
+  const handleAdminResetMfa = async (userItem: User) => {
+    if (!confirm(`Are you sure you want to administratively reset MFA for ${userItem.fullName} (${userItem.email})? Their MFA secret and recovery codes will be revoked.`)) {
+      return;
+    }
+    try {
+      await api.adminResetMfa(userItem.id);
+      alert(`MFA reset successfully for ${userItem.fullName}.`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to reset MFA for user.');
+    }
+  };
+
   const pendingRequests = registrations.filter((r) => r.status === 'PENDING');
 
   return (
@@ -228,7 +240,14 @@ export const UserManagementView: React.FC = () => {
                     <td className="py-4 px-6 font-mono text-slate-400 text-[11px]">
                       {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Active'}
                     </td>
-                    <td className="py-4 px-6 text-right">
+                    <td className="py-4 px-6 text-right space-x-2">
+                      <button
+                        onClick={() => handleAdminResetMfa(u)}
+                        className="px-3 py-1.5 rounded-xl font-bold text-xs border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 transition-colors cursor-pointer"
+                        title="Administratively reset user MFA"
+                      >
+                        Reset MFA
+                      </button>
                       <button
                         onClick={() => handleToggleStatus(u)}
                         className={`px-3 py-1.5 rounded-xl font-bold text-xs border transition-colors cursor-pointer ${

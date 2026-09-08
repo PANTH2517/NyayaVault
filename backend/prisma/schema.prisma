@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // --------------------------------------------------------
@@ -59,6 +60,14 @@ enum AuditEventType {
   REGISTRATION_REQUESTED
   REGISTRATION_APPROVED
   REGISTRATION_REJECTED
+  MFA_ENROLLMENT_STARTED
+  MFA_ENABLED
+  MFA_LOGIN_SUCCESS
+  MFA_LOGIN_FAILURE
+  MFA_RECOVERY_CODE_USED
+  MFA_RECOVERY_CODES_REGENERATED
+  MFA_DISABLED
+  MFA_ADMIN_RESET
 }
 
 enum RegistrationStatus {
@@ -100,6 +109,10 @@ model User {
   role                  RoleName              @default(INVESTIGATING_OFFICER)
   refreshTokenHash      String?
   isActive              Boolean               @default(true)
+  mfaEnabled            Boolean               @default(false)
+  mfaSecretEncrypted    String?
+  mfaEnrolledAt         DateTime?
+  mfaLastUsedTimeStep   Int?
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
@@ -112,8 +125,22 @@ model User {
   sessions              UserSession[]
   resetTokens           PasswordResetToken[]
   reviewedRegistrations RegistrationRequest[] @relation("RegistrationReviewer")
+  mfaRecoveryCodes      MfaRecoveryCode[]
 
   @@map("users")
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_recovery_codes")
 }
 
 model RegistrationRequest {
@@ -229,10 +256,13 @@ model DocumentVersion {
   fileSizeBytes     BigInt
   mimeType          String
   sha256Hash        String
-  isCompromised     Boolean            @default(false)
-  changeDescription String?
-  createdById       String
-  createdAt         DateTime           @default(now())
+  isCompromised       Boolean            @default(false)
+  changeDescription   String?
+  encryptionVersion   Int?
+  encryptionKeyVersion Int?
+  isEncrypted         Boolean            @default(false)
+  createdById         String
+  createdAt           DateTime           @default(now())
 
   document          Document           @relation("DocumentToVersions", fields: [documentId], references: [id], onDelete: Cascade)
   createdBy         User               @relation("VersionUploader", fields: [createdById], references: [id])
@@ -307,4 +337,147 @@ model SecurityIncident {
   version     DocumentVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
 
   @@map("security_incidents")
+}
+
+// --------------------------------------------------------
+// Sub-Phase 1E: Permissioned Blockchain Storage Models
+// --------------------------------------------------------
+
+model BlockchainChain {
+  id               String   @id @default(uuid())
+  nodeId           String
+  chainId          String
+  currentHeight    BigInt   @default(0)
+  currentBlockHash String
+  genesisBlockHash String
+  status           String   @default("ACTIVE")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([nodeId, chainId])
+  @@map("blockchain_chains")
+}
+
+model BlockchainBlock {
+  id                String   @id @default(uuid())
+  nodeId            String
+  chainId           String
+  height            BigInt
+  blockHash         String
+  previousBlockHash String
+  merkleRoot        String
+  timestamp         String
+  version           String   @default("1.0")
+  proposerNode      String
+  createdAt         DateTime @default(now())
+
+  transactions   BlockchainTransaction[]
+  consensusProof BlockchainConsensusProof?
+
+  @@unique([nodeId, chainId, height])
+  @@unique([nodeId, chainId, blockHash])
+  @@index([nodeId, chainId, previousBlockHash])
+  @@map("blockchain_blocks")
+}
+
+model BlockchainTransaction {
+  id              String   @id @default(uuid())
+  txId            String
+  blockId         String
+  nodeId          String
+  chainId         String
+  txIndex         Int
+  txType          String
+  originatingNode String
+  nonce           BigInt
+  payload         Json
+  signatureHex    String
+  timestamp       String
+  keyVersion      Int      @default(1)
+  keyFingerprint  String
+  createdAt       DateTime @default(now())
+
+  block BlockchainBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@unique([blockId, txIndex])
+  @@unique([nodeId, chainId, txId])
+  @@index([txId])
+  @@map("blockchain_transactions")
+}
+
+model BlockchainConsensusProof {
+  id                String   @id @default(uuid())
+  blockId           String   @unique
+  nodeId            String
+  chainId           String
+  consensusType     String   @default("PROOF_OF_AUTHORITY")
+  consensusVersion  String   @default("1.0")
+  proposalId        String
+  blockHash         String
+  blockHeight       String
+  policyId          String
+  policyVersion     String
+  requiredThreshold Int
+  requiredNodeIds   Json
+  collectedAt       String
+  commitTimestamp   String
+  createdAt         DateTime @default(now())
+
+  block        BlockchainBlock         @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  endorsements BlockchainEndorsement[]
+
+  @@map("blockchain_consensus_proofs")
+}
+
+model BlockchainEndorsement {
+  id             String   @id @default(uuid())
+  proofId        String
+  endorserNodeId String
+  keyVersion     Int
+  keyFingerprint String
+  publicKeyPem   String
+  signatureHex   String
+  signedAt       String
+  createdAt      DateTime @default(now())
+
+  proof BlockchainConsensusProof @relation(fields: [proofId], references: [id], onDelete: Cascade)
+
+  @@unique([proofId, endorserNodeId])
+  @@map("blockchain_endorsements")
+}
+
+enum BlockchainAnchorStatus {
+  PENDING
+  SUBMITTED
+  CONFIRMED
+  FAILED
+  REJECTED
+}
+
+model BlockchainApplicationAnchor {
+  id                  String                 @id @default(uuid())
+  idempotencyKey      String                 @unique
+  eventType           String
+  policyId            String                 @default("STANDARD_ANCHOR")
+  originatingNode     String
+  caseId              String?
+  documentId          String?
+  versionId           String?
+  auditSequenceNumber BigInt?
+  evidenceHash        String?
+  blockchainTxId      String?
+  blockHash           String?
+  blockHeight         BigInt?
+  status              BlockchainAnchorStatus @default(PENDING)
+  failureReason       String?
+  confirmedAt         DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@index([idempotencyKey])
+  @@index([versionId])
+  @@index([documentId])
+  @@index([caseId])
+  @@index([status])
+  @@map("blockchain_application_anchors")
 }

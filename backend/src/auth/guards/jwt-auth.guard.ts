@@ -26,6 +26,11 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired access token');
     }
 
+    // Explicitly reject non-access tokens (e.g. MFA challenge tokens or MFA enrollment required tokens)
+    if (payload.purpose === 'MFA_LOGIN' || payload.purpose === 'MFA_ENROLLMENT_REQUIRED' || (payload.purpose && payload.purpose !== 'ACCESS_TOKEN')) {
+      throw new UnauthorizedException('MFA challenge token cannot be used as an authenticated access token');
+    }
+
     // Verify account active status in DB to ensure immediate deactivation enforcement
     let user: { id: string; email: string; role: any; isActive: boolean } | null = null;
     let retries = 2;

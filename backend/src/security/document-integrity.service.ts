@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from '../documents/supabase-storage.service';
+import { DocumentEncryptionService } from '../documents/document-encryption.service';
 
 export interface IntegrityVerificationResult {
   valid: boolean;
@@ -22,10 +23,12 @@ export class DocumentIntegrityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storageService: SupabaseStorageService,
+    private readonly encryptionService: DocumentEncryptionService,
   ) {}
 
   /**
    * Byte-level SHA-256 integrity verification against trusted database hash
+   * Decrypts AES-256-GCM storage envelope before computing plaintext SHA-256
    */
   async verifyDocumentVersionIntegrity(
     documentId: string,
@@ -45,13 +48,35 @@ export class DocumentIntegrityService {
     const expectedHash = version.sha256Hash;
 
     try {
-      // 1. Fetch exact file bytes from private Supabase storage
+      // 1. Fetch storage object bytes from private Supabase storage
       const fileBuffer = await this.storageService.downloadFileBytes(version.storagePath);
 
-      // 2. Compute actual SHA-256 hash from downloaded bytes
-      const actualHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+      // 2. Decrypt AES-256-GCM envelope (or retain legacy plaintext)
+      let plaintextBuffer: Buffer;
+      try {
+        const decResult = this.encryptionService.decryptDocumentBytes(fileBuffer, version.isEncrypted ?? false);
+        plaintextBuffer = decResult.plaintext;
+      } catch (decErr: any) {
+        this.logger.error(
+          `Ciphertext authentication/decryption failure for version '${versionId}': ${decErr.message}`,
+        );
+        return {
+          valid: false,
+          tampered: true,
+          documentId,
+          versionId,
+          versionNumber: version.versionNumber,
+          expectedHash,
+          actualHash: 'CIPHERTEXT_AUTHENTICATION_TAG_MISMATCH',
+          checkedAt,
+          error: 'CIPHERTEXT_AUTHENTICATION_FAILED',
+        };
+      }
 
-      // 3. Timing-safe comparison of SHA-256 hashes
+      // 3. Compute actual SHA-256 hash from decrypted plaintext bytes
+      const actualHash = crypto.createHash('sha256').update(plaintextBuffer).digest('hex');
+
+      // 4. Timing-safe comparison of SHA-256 hashes against database trusted hash
       const isMatch = this.timingSafeEquals(actualHash, expectedHash);
 
       if (isMatch) {
@@ -68,7 +93,7 @@ export class DocumentIntegrityService {
       }
 
       this.logger.error(
-        `TAMPER DETECTED! Document '${documentId}' version '${version.versionNumber}' (Path: '${version.storagePath}'). Expected: ${expectedHash}, Actual: ${actualHash}`
+        `TAMPER DETECTED! Document '${documentId}' version '${version.versionNumber}' (Path: '${version.storagePath}'). Expected: ${expectedHash}, Actual: ${actualHash}`,
       );
 
       return {

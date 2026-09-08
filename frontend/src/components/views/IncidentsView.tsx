@@ -5,6 +5,8 @@ import {
   ShieldCheck,
   Filter,
   Search,
+  Activity,
+  RefreshCw,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { SecurityIncident, IncidentStatus } from '../../types';
@@ -16,6 +18,11 @@ export const IncidentsView: React.FC = () => {
   const [incidents, setIncidents] = useState<SecurityIncident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Monitoring Panel State
+  const [monitoringStatus, setMonitoringStatus] = useState<any>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanResultMsg, setScanResultMsg] = useState<string | null>(null);
 
   // Filter & Search State
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -35,9 +42,37 @@ export const IncidentsView: React.FC = () => {
     }
   };
 
+  const loadMonitoringStatus = async () => {
+    if (user?.role !== 'ADMIN') return;
+    try {
+      const status = await api.getIntegrityMonitoringStatus();
+      setMonitoringStatus(status);
+    } catch {
+      // Non-admin or disabled monitoring fallback
+    }
+  };
+
   useEffect(() => {
     loadIncidents();
-  }, []);
+    loadMonitoringStatus();
+  }, [user?.role]);
+
+  const handleRunScan = async () => {
+    setScanning(true);
+    setScanResultMsg(null);
+    try {
+      const result = await api.triggerIntegrityScan();
+      setScanResultMsg(
+        `Manual scan complete in ${result.durationMs}ms. Checked ${result.versionsChecked} version(s). Mismatches found: ${result.failuresDetected}.`
+      );
+      await loadIncidents();
+      await loadMonitoringStatus();
+    } catch (err: any) {
+      setScanResultMsg(`Scan failed: ${err.message}`);
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const handleUpdateStatus = async (id: string, newStatus: IncidentStatus) => {
     try {
@@ -90,6 +125,76 @@ export const IncidentsView: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {/* Continuous Scheduled Integrity Monitoring Operational Panel */}
+      {user?.role === 'ADMIN' && (
+        <div className="p-5 rounded-3xl bg-slate-900/90 border border-amber-500/30 shadow-xl backdrop-blur-xl space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                <Activity className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-extrabold text-white">Continuous Scheduled Integrity Monitoring</h2>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                      monitoringStatus?.enabled
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}
+                  >
+                    {monitoringStatus?.enabled ? 'ACTIVE' : 'DISABLED'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Automated background SHA-256 verification against private Supabase storage.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleRunScan}
+              disabled={scanning}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} />
+              <span>{scanning ? 'Scanning Evidence...' : 'Run Integrity Scan'}</span>
+            </button>
+          </div>
+
+          {scanResultMsg && (
+            <div className="p-3 rounded-xl bg-slate-950 border border-amber-500/30 text-amber-300 text-xs font-mono">
+              {scanResultMsg}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono pt-1">
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
+              <span className="text-slate-500 block text-[10px] uppercase font-sans">Cadence</span>
+              <span className="text-slate-200 font-bold">
+                {monitoringStatus?.intervalSeconds ? `Every ${monitoringStatus.intervalSeconds}s` : 'Configured via ENV'}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
+              <span className="text-slate-500 block text-[10px] uppercase font-sans">Last Scan</span>
+              <span className="text-slate-200 font-bold">
+                {monitoringStatus?.lastScanCompleted
+                  ? new Date(monitoringStatus.lastScanCompleted).toLocaleTimeString()
+                  : 'Pending Run'}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
+              <span className="text-slate-500 block text-[10px] uppercase font-sans">Versions Checked</span>
+              <span className="text-emerald-400 font-bold">{monitoringStatus?.versionsChecked ?? 0}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
+              <span className="text-slate-500 block text-[10px] uppercase font-sans">Tamper Mismatches</span>
+              <span className="text-rose-400 font-bold">{monitoringStatus?.integrityFailuresDetected ?? 0}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filters Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl backdrop-blur-xl">

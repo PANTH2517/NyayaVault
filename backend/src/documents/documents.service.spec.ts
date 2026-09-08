@@ -9,6 +9,7 @@ import {
 import * as crypto from 'crypto';
 import { DocumentsService, ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from './documents.service';
 import { SupabaseStorageService } from './supabase-storage.service';
+import { DocumentEncryptionService } from './document-encryption.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentAccessGuard } from './guards/document-access.guard';
 import { CaseAccessGuard } from '../cases/guards/case-access.guard';
@@ -16,6 +17,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AuditChainService } from '../security/audit-chain.service';
 import { DocumentIntegrityService } from '../security/document-integrity.service';
 import { SecurityIncidentsService } from '../security/security-incidents.service';
+import { BlockchainIntegrationService } from '../blockchain/integration/blockchain-integration.service';
 import { RoleName, DocumentClassification, DocumentStatus } from '@prisma/client';
 
 describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', () => {
@@ -153,6 +155,13 @@ describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', 
   const mockIncidentsService = {
     createIncident: jest.fn().mockResolvedValue({ id: 'inc-1' }),
   };
+  const mockBlockchainIntegrationService = {
+    anchorEvidenceCreation: jest.fn().mockResolvedValue({ anchorId: 'anc-1' }),
+    anchorVersionCreation: jest.fn().mockResolvedValue({ anchorId: 'anc-2' }),
+    anchorDocumentApproval: jest.fn().mockResolvedValue({ anchorId: 'anc-3' }),
+    anchorDocumentSealing: jest.fn().mockResolvedValue({ anchorId: 'anc-4' }),
+    anchorTamperIncident: jest.fn().mockResolvedValue({ anchorId: 'anc-5' }),
+  };
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -164,12 +173,14 @@ describe('DocumentsModule & Secure Upload Foundation Test Suite (Milestone 5)', 
       providers: [
         DocumentsService,
         SupabaseStorageService,
+        DocumentEncryptionService,
         DocumentAccessGuard,
         CaseAccessGuard,
         JwtAuthGuard,
         { provide: AuditChainService, useValue: mockAuditChainService },
         { provide: DocumentIntegrityService, useValue: mockIntegrityService },
         { provide: SecurityIncidentsService, useValue: mockIncidentsService },
+        { provide: BlockchainIntegrationService, useValue: mockBlockchainIntegrationService },
         {
           provide: PrismaService,
           useValue: mockPrismaService,

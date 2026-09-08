@@ -64,6 +64,9 @@ export interface DocumentVersion {
   mimeType: string;
   sha256Hash: string;
   isCompromised: boolean;
+  encryptionVersion?: number;
+  encryptionKeyVersion?: number;
+  isEncrypted?: boolean;
   changeDescription?: string;
   createdById: string;
   createdAt: string;

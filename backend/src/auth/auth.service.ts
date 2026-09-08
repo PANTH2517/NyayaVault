@@ -16,7 +16,8 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterRequestDto } from './dto/register-request.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { PasswordResetRequestDto } from './dto/password-reset-request.dto';
-import { PasswordResetConfirmDto } from './dto/password-reset-confirm.dto';
+import { PasswordResetConfirmDto } from './dto/password-reset-confirm.dto';import { MfaService } from './mfa.service';
+import { VerifyMfaLoginDto, MfaDisableDto, MfaRegenerateRecoveryCodesDto } from './dto/mfa-verify.dto';
 
 export const COOKIE_NAME = 'nyaya_refresh_token';
 
@@ -43,6 +44,7 @@ export class AuthService implements OnModuleInit {
     private readonly jwtService: JwtService,
     private readonly auditChainService: AuditChainService,
     private readonly emailService: EmailService,
+    private readonly mfaService: MfaService,
   ) {}
 
   onModuleInit() {
@@ -182,6 +184,28 @@ export class AuthService implements OnModuleInit {
         metadata: { emailAttempt: email },
       });
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // MFA Check Flow
+    const enforcementMode = process.env.MFA_ENFORCEMENT_MODE || 'OPTIONAL';
+    const isEnforcementRequired =
+      enforcementMode === 'ALL_USERS' || (enforcementMode === 'ADMIN_REQUIRED' && user.role === RoleName.ADMIN);
+
+    if (user.mfaEnabled) {
+      const challengeToken = await this.mfaService.generateMfaChallengeToken(user.id);
+      return {
+        mfaRequired: true,
+        mfaChallengeToken: challengeToken,
+        expiresIn: 300,
+      };
+    } else if (isEnforcementRequired) {
+      const enrollmentToken = await this.mfaService.generateMfaEnrollmentToken(user.id);
+      return {
+        mfaRequired: true,
+        mfaEnrollmentRequired: true,
+        mfaEnrollmentToken: enrollmentToken,
+        expiresIn: 600,
+      };
     }
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
@@ -566,10 +590,433 @@ export class AuthService implements OnModuleInit {
   }
 
   /**
-   * Exclude passwordHash and refreshTokenHash from user response
+   * Verify MFA login challenge using TOTP code or Recovery Code
+   */
+  async verifyMfaLogin(dto: VerifyMfaLoginDto, ipAddress?: string, userAgent?: string) {
+    const payload = await this.mfaService.verifyMfaChallengeToken(dto.mfaChallengeToken);
+    const userId = payload.sub;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('User account not found or disabled');
+    }
+
+    if (!user.mfaEnabled || !user.mfaSecretEncrypted) {
+      throw new BadRequestException('MFA is not enabled for this account');
+    }
+
+    const codeInput = (dto.code || dto.totpCode || dto.recoveryCode || '').trim();
+    if (!codeInput) {
+      throw new BadRequestException('Either TOTP authentication code or recovery code must be provided');
+    }
+
+    let isFactorValid = false;
+
+    if (/^\d{6}$/.test(codeInput)) {
+      // 6-digit numeric TOTP code
+      const plainSecret = this.mfaService.decryptSecret(user.mfaSecretEncrypted);
+      const verifyResult = this.mfaService.verifyTotpCode(plainSecret, codeInput, user.mfaLastUsedTimeStep);
+
+      if (!verifyResult.valid) {
+        await this.auditChainService.recordEvent({
+          eventType: AuditEventType.MFA_LOGIN_FAILURE,
+          userId: user.id,
+          action: verifyResult.isReplay ? 'MFA_LOGIN_FAILED_REPLAY' : 'MFA_LOGIN_FAILED_INVALID_TOTP',
+          ipAddress,
+          userAgent,
+        });
+        if (verifyResult.isReplay) {
+          throw new UnauthorizedException('Authentication code already used. Please wait for the next time step.');
+        }
+        throw new UnauthorizedException('Invalid or expired authentication code');
+      }
+
+      if (verifyResult.timeStep !== undefined) {
+        const updateResult = await this.prisma.user.updateMany({
+          where: {
+            id: user.id,
+            OR: [
+              { mfaLastUsedTimeStep: null },
+              { mfaLastUsedTimeStep: { lt: verifyResult.timeStep } },
+            ],
+          },
+          data: { mfaLastUsedTimeStep: verifyResult.timeStep },
+        });
+
+        if (updateResult.count === 0) {
+          await this.auditChainService.recordEvent({
+            eventType: AuditEventType.MFA_LOGIN_FAILURE,
+            userId: user.id,
+            action: 'MFA_LOGIN_FAILED_CONCURRENT_REPLAY',
+            ipAddress,
+            userAgent,
+          });
+          throw new UnauthorizedException('Authentication code already used. Please wait for the next time step.');
+        }
+      }
+
+      isFactorValid = true;
+    } else {
+      // Emergency recovery code
+      const recoveryCodes = await this.prisma.mfaRecoveryCode.findMany({
+        where: { userId: user.id, usedAt: null },
+      });
+
+      let matchedCodeId: string | null = null;
+      for (const rc of recoveryCodes) {
+        const isMatch = await this.mfaService.verifyRecoveryCode(codeInput, rc.codeHash);
+        if (isMatch) {
+          matchedCodeId = rc.id;
+          break;
+        }
+      }
+
+      if (!matchedCodeId) {
+        await this.auditChainService.recordEvent({
+          eventType: AuditEventType.MFA_LOGIN_FAILURE,
+          userId: user.id,
+          action: 'MFA_LOGIN_FAILED_INVALID_RECOVERY_CODE',
+          ipAddress,
+          userAgent,
+        });
+        throw new UnauthorizedException('Invalid or already used recovery code');
+      }
+
+      await this.prisma.mfaRecoveryCode.update({
+        where: { id: matchedCodeId },
+        data: { usedAt: new Date() },
+      });
+
+      await this.auditChainService.recordEvent({
+        eventType: AuditEventType.MFA_RECOVERY_CODE_USED,
+        userId: user.id,
+        action: 'MFA_RECOVERY_CODE_USED',
+        ipAddress,
+        userAgent,
+      });
+
+      isFactorValid = true;
+    }
+
+    if (!isFactorValid) {
+      throw new UnauthorizedException('Multi-Factor Authentication failed');
+    }
+
+    // Now issue normal access token, refresh token & create UserSession
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const session = await this.prisma.userSession.create({
+      data: {
+        userId: user.id,
+        refreshTokenHash: 'PENDING_HASH',
+        ipAddress: ipAddress || null,
+        userAgent: userAgent || null,
+        expiresAt,
+      },
+    });
+
+    const tokens = await this.generateTokens(user, session.id);
+    const refreshTokenHash = await argon2.hash(tokens.refreshToken);
+
+    await this.prisma.userSession.update({
+      where: { id: session.id },
+      data: { refreshTokenHash },
+    });
+
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.MFA_LOGIN_SUCCESS,
+      userId: user.id,
+      action: 'MFA_LOGIN_SUCCESS',
+      ipAddress,
+      userAgent,
+    });
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: this.sanitizeUser(user),
+    };
+  }
+
+  /**
+   * Initiate self-service MFA enrollment for authenticated user
+   */
+  async initiateMfaEnrollment(userId: string, currentPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('User profile not found or inactive');
+    }
+
+    if (user.mfaEnabled) {
+      throw new BadRequestException('MFA is already enabled for this account');
+    }
+
+    const isPasswordValid = await argon2.verify(user.passwordHash, currentPassword);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Current password confirmation failed');
+    }
+
+    const secretBase32 = this.mfaService.generateTotpSecret();
+    const encryptedSecret = this.mfaService.encryptSecret(secretBase32);
+
+    // Save pending secret without turning on mfaEnabled yet
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { mfaSecretEncrypted: encryptedSecret, mfaEnabled: false },
+    });
+
+    const otpauthUrl = this.mfaService.buildOtpAuthUrl(user.email, secretBase32);
+    const qrCodeUrl = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect width="200" height="200" fill="#ffffff"/><path d="M20 20h60v60H20zM120 20h60v60h-60zM20 120h60v60H20z" fill="#000000"/></svg>');
+
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.MFA_ENROLLMENT_STARTED,
+      userId,
+      action: 'MFA_ENROLLMENT_INITIATED',
+    });
+
+    return {
+      secret: secretBase32,
+      otpauthUrl,
+      qrCodeUrl,
+    };
+  }
+
+  /**
+   * Confirm self-service MFA enrollment with TOTP code
+   */
+  async confirmMfaEnrollment(userId: string, totpCode: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive || !user.mfaSecretEncrypted) {
+      throw new BadRequestException('MFA enrollment has not been initiated');
+    }
+
+    const plainSecret = this.mfaService.decryptSecret(user.mfaSecretEncrypted);
+    const verifyResult = this.mfaService.verifyTotpCode(plainSecret, totpCode);
+
+    if (!verifyResult.valid) {
+      throw new BadRequestException('Invalid authentication code. Enrollment confirmation failed.');
+    }
+
+    // Generate single-use emergency recovery codes
+    const { plainCodes, hashedCodes } = await this.mfaService.generateRecoveryCodes(8);
+
+    await this.prisma.$transaction(async (tx) => {
+      // Invalidate old recovery codes
+      await tx.mfaRecoveryCode.deleteMany({ where: { userId } });
+
+      // Store hashed recovery codes
+      await tx.mfaRecoveryCode.createMany({
+        data: hashedCodes.map((codeHash) => ({
+          userId,
+          codeHash,
+        })),
+      });
+
+      // Enable MFA for account
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          mfaEnabled: true,
+          mfaEnrolledAt: new Date(),
+          mfaLastUsedTimeStep: verifyResult.timeStep,
+        },
+      });
+    });
+
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.MFA_ENABLED,
+      userId,
+      action: 'MFA_ENABLED_CONFIRMED',
+    });
+
+    return {
+      success: true,
+      message: 'MFA enabled successfully. Please store your recovery codes in a secure location.',
+      recoveryCodes: plainCodes,
+    };
+  }
+
+  /**
+   * Get MFA status for current user
+   */
+  async getMfaStatus(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const unusedRecoveryCodesCount = await this.prisma.mfaRecoveryCode.count({
+      where: { userId, usedAt: null },
+    });
+
+    return {
+      enabled: user.mfaEnabled,
+      enrolledAt: user.mfaEnrolledAt,
+      recoveryCodesRemaining: unusedRecoveryCodesCount,
+    };
+  }
+
+  /**
+   * Disable MFA for self
+   */
+  async disableMfa(userId: string, passwordOrDto: any, codeParam?: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('User account not found or inactive');
+    }
+
+    if (!user.mfaEnabled || !user.mfaSecretEncrypted) {
+      throw new BadRequestException('MFA is not enabled for this account');
+    }
+
+    const currentPassword = typeof passwordOrDto === 'string' ? passwordOrDto : passwordOrDto.currentPassword;
+    const codeInput = (typeof passwordOrDto === 'string' ? codeParam : (passwordOrDto.code || passwordOrDto.totpCode || passwordOrDto.recoveryCode) || '').trim();
+
+    const isPasswordValid = await argon2.verify(user.passwordHash, currentPassword);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Current password confirmation failed');
+    }
+
+    let isFactorValid = false;
+    if (/^\d{6}$/.test(codeInput)) {
+      const plainSecret = this.mfaService.decryptSecret(user.mfaSecretEncrypted);
+      const verifyResult = this.mfaService.verifyTotpCode(plainSecret, codeInput);
+      if (verifyResult.valid) isFactorValid = true;
+    } else if (codeInput) {
+      const recoveryCodes = await this.prisma.mfaRecoveryCode.findMany({
+        where: { userId, usedAt: null },
+      });
+      for (const rc of recoveryCodes) {
+        if (await this.mfaService.verifyRecoveryCode(codeInput, rc.codeHash)) {
+          isFactorValid = true;
+          break;
+        }
+      }
+    }
+
+    if (!isFactorValid) {
+      throw new UnauthorizedException('MFA disable requires a valid TOTP code or unused recovery code');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          mfaEnabled: false,
+          mfaSecretEncrypted: null,
+          mfaEnrolledAt: null,
+          mfaLastUsedTimeStep: null,
+        },
+      });
+
+      await tx.mfaRecoveryCode.deleteMany({ where: { userId } });
+    });
+
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.MFA_DISABLED,
+      userId,
+      action: 'MFA_DISABLED',
+    });
+
+    return { message: 'Multi-factor authentication disabled successfully.' };
+  }
+
+  /**
+   * Regenerate emergency recovery codes
+   */
+  async regenerateRecoveryCodes(userId: string, passwordOrDto: any, codeParam?: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive || !user.mfaEnabled || !user.mfaSecretEncrypted) {
+      throw new BadRequestException('MFA is not enabled for this account');
+    }
+
+    const currentPassword = typeof passwordOrDto === 'string' ? passwordOrDto : passwordOrDto.currentPassword;
+    const totpCode = (typeof passwordOrDto === 'string' ? codeParam : (passwordOrDto.totpCode || passwordOrDto.code) || '').trim();
+
+    const isPasswordValid = await argon2.verify(user.passwordHash, currentPassword);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Current password confirmation failed');
+    }
+
+    const plainSecret = this.mfaService.decryptSecret(user.mfaSecretEncrypted);
+    const verifyResult = this.mfaService.verifyTotpCode(plainSecret, totpCode);
+
+    if (!verifyResult.valid) {
+      throw new UnauthorizedException('Invalid authentication code');
+    }
+
+    const { plainCodes, hashedCodes } = await this.mfaService.generateRecoveryCodes(8);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.mfaRecoveryCode.deleteMany({ where: { userId } });
+      await tx.mfaRecoveryCode.createMany({
+        data: hashedCodes.map((codeHash) => ({ userId, codeHash })),
+      });
+    });
+
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.MFA_RECOVERY_CODES_REGENERATED,
+      userId,
+      action: 'MFA_RECOVERY_CODES_REGENERATED',
+    });
+
+    return {
+      message: 'New recovery codes generated. Previous codes have been invalidated.',
+      recoveryCodes: plainCodes,
+    };
+  }
+
+  /**
+   * ADMIN-only MFA Reset for target user account recovery
+   */
+  async adminResetMfa(adminUserId: string, targetUserId: string) {
+    if (targetUserId === adminUserId) {
+      throw new BadRequestException('Administrators cannot use administrative reset on their own account. Please use self-service MFA settings.');
+    }
+
+    const targetUser = await this.prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!targetUser) {
+      throw new BadRequestException(`User with ID '${targetUserId}' not found`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: targetUserId },
+        data: {
+          mfaEnabled: false,
+          mfaSecretEncrypted: null,
+          mfaEnrolledAt: null,
+          mfaLastUsedTimeStep: null,
+        },
+      });
+
+      await tx.mfaRecoveryCode.deleteMany({ where: { userId: targetUserId } });
+      await tx.userSession.updateMany({
+        where: { userId: targetUserId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.MFA_ADMIN_RESET,
+      userId: adminUserId,
+      action: `MFA_ADMIN_RESET_PERFORMED_ON_USER_${targetUserId}`,
+      metadata: { targetUserId },
+    });
+
+    return {
+      success: true,
+      message: `MFA reset successfully for user '${targetUser.fullName}' (${targetUser.email}). Target sessions revoked.`,
+    };
+  }
+
+  /**
+   * Exclude passwordHash, refreshTokenHash, and mfaSecretEncrypted from user response
    */
   sanitizeUser(user: User) {
-    const { passwordHash, refreshTokenHash, ...safeUser } = user;
+    const { passwordHash, refreshTokenHash, mfaSecretEncrypted, ...safeUser } = user;
     return safeUser;
   }
 }

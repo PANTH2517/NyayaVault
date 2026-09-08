@@ -6,7 +6,9 @@ import { AuditChainService, GENESIS_HASH } from './audit-chain.service';
 import { DocumentIntegrityService } from './document-integrity.service';
 import { SecurityIncidentsService } from './security-incidents.service';
 import { DocumentsService } from '../documents/documents.service';
+import { BlockchainIntegrationService } from '../blockchain/integration/blockchain-integration.service';
 import { SupabaseStorageService } from '../documents/supabase-storage.service';
+import { DocumentEncryptionService } from '../documents/document-encryption.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -222,11 +224,22 @@ describe('SecurityModule & Milestone 6 Core Test Suite', () => {
         SecurityIncidentsService,
         DocumentsService,
         SupabaseStorageService,
+        DocumentEncryptionService,
         DocumentAccessGuard,
         CaseAccessGuard,
         JwtAuthGuard,
         RolesGuard,
         Reflector,
+        {
+          provide: BlockchainIntegrationService,
+          useValue: {
+            anchorEvidenceCreation: jest.fn().mockResolvedValue({ anchorId: 'anc-1' }),
+            anchorVersionCreation: jest.fn().mockResolvedValue({ anchorId: 'anc-2' }),
+            anchorDocumentApproval: jest.fn().mockResolvedValue({ anchorId: 'anc-3' }),
+            anchorDocumentSealing: jest.fn().mockResolvedValue({ anchorId: 'anc-4' }),
+            anchorTamperIncident: jest.fn().mockResolvedValue({ anchorId: 'anc-5' }),
+          },
+        },
         { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();

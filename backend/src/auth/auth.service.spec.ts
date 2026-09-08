@@ -10,6 +10,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Reflector } from '@nestjs/core';
 import { RoleName } from '@prisma/client';
+import { MfaService } from './mfa.service';
 
 describe('AuthModule Unit & Integration Suite (Step 1 Production Hardened)', () => {
   let authService: AuthService;
@@ -200,6 +201,9 @@ describe('AuthModule Unit & Integration Suite (Step 1 Production Hardened)', () 
   };
 
   beforeAll(async () => {
+    process.env.MFA_ENCRYPTION_KEY = '12345678901234567890123456789012';
+    process.env.MFA_CHALLENGE_SECRET = 'test_mfa_challenge_secret_key_32bytes_long';
+
     mockUser.passwordHash = await argon2.hash('Admin@Nyaya2026');
     mockOfficerUser.passwordHash = await argon2.hash('Officer@Nyaya2026');
 
@@ -216,6 +220,7 @@ describe('AuthModule Unit & Integration Suite (Step 1 Production Hardened)', () 
       ],
       providers: [
         AuthService,
+        MfaService,
         {
           provide: PrismaService,
           useValue: mockPrismaService,

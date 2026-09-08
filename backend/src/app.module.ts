@@ -10,6 +10,8 @@ import { CasesModule } from './cases/cases.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SecurityModule } from './security/security.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { BlockchainIntegrationModule } from './blockchain/integration/blockchain-integration.module';
+import { IntegrityMonitoringModule } from './integrity-monitoring/integrity-monitoring.module';
 
 @Module({
   imports: [
@@ -27,6 +29,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
     DocumentsModule,
     SecurityModule,
     DashboardModule,
+    BlockchainIntegrationModule,
+    IntegrityMonitoringModule,
   ],
   controllers: [HealthController],
   providers: [

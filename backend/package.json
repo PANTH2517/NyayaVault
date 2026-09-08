@@ -11,6 +11,12 @@
     "start:dev": "ts-node src/main.ts",
     "start:debug": "ts-node --inspect-brk src/main.ts",
     "start:prod": "node dist/main.js",
+    "blockchain:node": "ts-node src/blockchain-node.main.ts",
+    "blockchain:police": "ts-node src/blockchain-node.main.ts",
+    "blockchain:prosecution": "ts-node src/blockchain-node.main.ts",
+    "blockchain:court": "ts-node src/blockchain-node.main.ts",
+    "blockchain:admin": "ts-node src/blockchain-node.main.ts",
+    "blockchain:orchestrator": "ts-node src/blockchain/network/four-node-orchestrator.ts",
     "test": "npx jest",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix"
   },

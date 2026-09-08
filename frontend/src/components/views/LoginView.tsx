@@ -8,7 +8,7 @@ import { RoleName } from '../../types';
 type AuthMode = 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD';
 
 export const LoginView: React.FC = () => {
-  const { login, loading } = useAuth();
+  const { login, verifyMfa, loading } = useAuth();
   const [mode, setMode] = useState<AuthMode>('LOGIN');
 
   // Login State
@@ -16,6 +16,12 @@ export const LoginView: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+
+  // MFA Challenge State
+  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  const [mfaError, setMfaError] = useState<string | null>(null);
 
   // Registration State
   const [regFullName, setRegFullName] = useState('');
@@ -36,9 +42,25 @@ export const LoginView: React.FC = () => {
     e.preventDefault();
     setLoginError(null);
     try {
-      await login(email.trim(), password);
+      const res = await login(email.trim(), password);
+      if (res && res.mfaRequired && res.mfaChallengeToken) {
+        setMfaChallengeToken(res.mfaChallengeToken);
+        setMfaCode('');
+        setMfaError(null);
+      }
     } catch (err: any) {
       setLoginError(err.message || 'Invalid email or password');
+    }
+  };
+
+  const handleMfaVerifySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mfaChallengeToken) return;
+    setMfaError(null);
+    try {
+      await verifyMfa(mfaChallengeToken, mfaCode.trim());
+    } catch (err: any) {
+      setMfaError(err.message || 'Verification failed. Invalid code or challenge expired.');
     }
   };
 
@@ -109,7 +131,7 @@ export const LoginView: React.FC = () => {
         </div>
 
         {/* Auth Mode Tabs */}
-        {mode !== 'FORGOT_PASSWORD' && (
+        {mode !== 'FORGOT_PASSWORD' && !mfaChallengeToken && (
           <div className="grid grid-cols-2 p-1 rounded-2xl bg-slate-900 border border-slate-800 text-xs font-bold">
             <button
               onClick={() => {
@@ -145,7 +167,78 @@ export const LoginView: React.FC = () => {
 
         {/* Card Body */}
         <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-8 space-y-6 shadow-2xl backdrop-blur-xl">
-          {mode === 'LOGIN' && (
+          {mfaChallengeToken ? (
+            <form onSubmit={handleMfaVerifySubmit} className="space-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-amber-400" />
+                  <h2 className="text-lg font-bold text-white">Multi-Factor Authentication</h2>
+                </div>
+                <p className="text-xs text-slate-400">
+                  {useRecoveryCode
+                    ? 'Enter an unused 32-character single-use emergency recovery code.'
+                    : 'Enter the 6-digit authentication code from your authenticator app.'}
+                </p>
+              </div>
+
+              {mfaError && (
+                <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2 font-medium">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{mfaError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300">
+                  {useRecoveryCode ? 'Recovery Code' : '6-Digit Authentication Code'}
+                </label>
+                <input
+                  type="text"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  required
+                  autoFocus
+                  maxLength={useRecoveryCode ? 40 : 8}
+                  placeholder={useRecoveryCode ? 'e.g. A1B2C3D4-E5F67890-12345678-90ABCDEF' : '123456'}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-center tracking-widest text-base font-mono focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-xs pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseRecoveryCode(!useRecoveryCode);
+                    setMfaCode('');
+                    setMfaError(null);
+                  }}
+                  className="text-amber-400 hover:underline cursor-pointer font-medium"
+                >
+                  {useRecoveryCode ? 'Use authenticator app (TOTP)' : 'Use a recovery code'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMfaChallengeToken(null);
+                    setMfaCode('');
+                    setMfaError(null);
+                  }}
+                  className="text-slate-400 hover:text-slate-200 cursor-pointer font-medium"
+                >
+                  Back to Sign In
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || !mfaCode.trim()}
+                className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50 mt-2"
+              >
+                {loading ? 'Verifying Code...' : 'Verify & Sign In'}
+              </button>
+            </form>
+          ) : mode === 'LOGIN' && (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div className="space-y-1">
                 <h2 className="text-lg font-bold text-white">Official Sign In</h2>
