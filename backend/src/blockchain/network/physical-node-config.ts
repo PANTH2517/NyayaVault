@@ -81,7 +81,7 @@ export class PhysicalNodeConfig {
 
     const chainId = env.BLOCKCHAIN_CHAIN_ID || 'nyayavault-mainnet-1';
     const listenHost = env.BLOCKCHAIN_LISTEN_HOST || '0.0.0.0';
-    const listenPort = parseInt(env.BLOCKCHAIN_LISTEN_PORT || '5001', 10);
+    const listenPort = parseInt(env.PORT || env.BLOCKCHAIN_LISTEN_PORT || '5001', 10);
 
     // Parse Peer URLs (Format: POLICE_NODE=http://127.0.0.1:5001,PROSECUTION_NODE=http://127.0.0.1:5002)
     const peerUrls = new Map<NodeType, string>();
@@ -110,7 +110,8 @@ export class PhysicalNodeConfig {
 
     const requestTimeoutMs = parseInt(env.BLOCKCHAIN_REQUEST_TIMEOUT_MS || '10000', 10);
     const maxMessageAgeMs = parseInt(env.BLOCKCHAIN_MAX_MESSAGE_AGE_MS || '300000', 10);
-    const privateKeyPem = env.BLOCKCHAIN_NODE_PRIVATE_KEY_PEM || env.BLOCKCHAIN_NODE_KEY_PEM;
+    const rawKey = env.BLOCKCHAIN_NODE_PRIVATE_KEY_PEM || env.BLOCKCHAIN_NODE_KEY_PEM;
+    const privateKeyPem = rawKey && rawKey.includes('\\n') ? rawKey.replace(/\\n/g, '\n') : rawKey;
     const appServiceSecret = env.BLOCKCHAIN_APP_SERVICE_SECRET;
 
     return new PhysicalNodeConfig({

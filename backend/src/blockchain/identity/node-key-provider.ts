@@ -19,7 +19,9 @@ export class NodeKeyProvider {
     if (overridePrivateKeyPem) {
       // Extract or compute corresponding public key from private key
       try {
-        const privKey = overridePrivateKeyPem;
+        const privKey = overridePrivateKeyPem.includes('\\n')
+          ? overridePrivateKeyPem.replace(/\\n/g, '\n')
+          : overridePrivateKeyPem;
         const pubKeyObject = require('crypto').createPublicKey(privKey);
         const publicKeyPem = pubKeyObject.export({ type: 'spki', format: 'pem' }).toString();
         return { publicKeyPem, privateKeyPem: privKey };
