@@ -121,7 +121,17 @@ export class PoAConsensusEngine implements IConsensusEngine {
         }
 
         const keyVersion = sig.keyVersion || node.currentVersion;
-        const keyRecord = node.keys.find((k) => k.version === keyVersion);
+        let keyRecord = node.keys.find((k) => k.version === keyVersion);
+
+        if (sig.publicKeyPem) {
+          keyRecord = {
+            version: keyVersion,
+            publicKeyPem: sig.publicKeyPem,
+            fingerprint: sig.keyFingerprint || '',
+            createdAt: new Date().toISOString(),
+            status: 'ACTIVE',
+          };
+        }
 
         if (!keyRecord) {
           return {

@@ -134,9 +134,17 @@ export class ChainRehydrationService {
           const reg = (this.consensusEngine as any).nodeRegistry;
           for (const sig of tx.signatures) {
             if (!sig.publicKeyPem) {
-              const activeKey = reg.getActiveKey(sig.nodeId);
-              if (activeKey) {
-                sig.publicKeyPem = activeKey.publicKeyPem;
+              const endorsementKey = currBlock.consensusProof?.endorsingSignatures?.find(
+                (e) => e.nodeId === sig.nodeId && Boolean(e.publicKeyPem),
+              )?.publicKeyPem;
+
+              if (endorsementKey) {
+                sig.publicKeyPem = endorsementKey;
+              } else {
+                const activeKey = reg.getActiveKey(sig.nodeId);
+                if (activeKey) {
+                  sig.publicKeyPem = activeKey.publicKeyPem;
+                }
               }
             }
           }
