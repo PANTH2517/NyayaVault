@@ -13,6 +13,7 @@ import { BlockchainAnchorService } from './blockchain-anchor.service';
 import { BlockchainVerificationService } from './blockchain-verification.service';
 import { AuditCheckpointService } from './audit-checkpoint.service';
 import { BlockchainIntegrationService } from './blockchain-integration.service';
+import { BlockchainObservabilityService } from './blockchain-observability.service';
 import { BlockchainController } from './blockchain.controller';
 
 @Module({
@@ -25,7 +26,8 @@ import { BlockchainController } from './blockchain.controller';
     BlockchainVerificationService,
     AuditCheckpointService,
     BlockchainIntegrationService,
+    BlockchainObservabilityService,
   ],
-  exports: [BlockchainIntegrationService],
+  exports: [BlockchainIntegrationService, BlockchainObservabilityService],
 })
 export class BlockchainIntegrationModule {}

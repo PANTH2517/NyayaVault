@@ -493,6 +493,10 @@ export const api = {
     return request<any>('/blockchain/status');
   },
 
+  async getBlockchainNetworkObservability() {
+    return request<any>('/blockchain/status');
+  },
+
   async getBlockchainAnchor(versionId: string) {
     return request<any>(`/blockchain/evidence/${versionId}`);
   },

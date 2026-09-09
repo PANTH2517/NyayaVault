@@ -16,6 +16,7 @@ import { AuditTrailView } from './components/views/AuditTrailView';
 import { AboutView } from './components/views/AboutView';
 import { UserManagementView } from './components/views/UserManagementView';
 import { SecurityControlsView } from './components/views/SecurityControlsView';
+import { BlockchainObservabilityView } from './components/views/BlockchainObservabilityView';
 import { MotionPage } from './components/motion/MotionPage';
 import { CinematicBackground } from './components/motion/CinematicBackground';
 
@@ -126,6 +127,8 @@ const MainLayout: React.FC = () => {
         return <UserManagementView />;
       case 'security-controls':
         return <SecurityControlsView />;
+      case 'blockchain-network':
+        return <BlockchainObservabilityView />;
       default:
         return (
           <DashboardView

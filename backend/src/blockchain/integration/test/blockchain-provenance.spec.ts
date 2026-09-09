@@ -16,6 +16,7 @@ import { SupabaseStorageService } from '../../../documents/supabase-storage.serv
 import { DocumentEncryptionService } from '../../../documents/document-encryption.service';
 import { BlockchainVerificationService } from '../blockchain-verification.service';
 import { BlockchainIntegrationService } from '../blockchain-integration.service';
+import { BlockchainObservabilityService } from '../blockchain-observability.service';
 import { BlockchainController } from '../blockchain.controller';
 import { BlockchainTransactionBuilder } from '../blockchain-transaction-builder';
 import { BlockchainAnchorService } from '../blockchain-anchor.service';
@@ -67,6 +68,7 @@ describe('Sub-Phase 1G: Evidence Chain-of-Custody & Provenance Engine', () => {
         BlockchainVerificationService,
         AuditCheckpointService,
         BlockchainIntegrationService,
+        BlockchainObservabilityService,
         BlockchainController,
         DocumentIntegrityService,
         DocumentEncryptionService,

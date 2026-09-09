@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser, UserPayload } from '../../auth/decorators/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BlockchainIntegrationService } from './blockchain-integration.service';
+import { BlockchainObservabilityService } from './blockchain-observability.service';
 import { PrismaLedgerStore } from '../ledger/prisma-ledger-store';
 
 @Controller('api/v1/blockchain')
@@ -26,14 +27,20 @@ export class BlockchainController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly integrationService: BlockchainIntegrationService,
+    private readonly observabilityService: BlockchainObservabilityService,
   ) {}
 
   /**
    * GET /api/v1/blockchain/status
-   * Operational status of permissioned blockchain nodes & anchor counts
+   * Operational status of permissioned blockchain nodes & anchor counts.
+   * Infrastructure-wide topology/observability details are ADMIN-only.
    */
   @Get('status')
   async getStatus(@CurrentUser() user: UserPayload) {
+    if (user.role === RoleName.ADMIN) {
+      return this.observabilityService.getNetworkObservability();
+    }
+
     const store = new PrismaLedgerStore({
       prisma: this.prisma as any,
       nodeId: 'POLICE_NODE',
@@ -50,7 +57,7 @@ export class BlockchainController {
     ]);
 
     return {
-      nodeId: user.role === RoleName.ADMIN ? 'ADMIN_NODE' : 'POLICE_NODE',
+      nodeId: 'POLICE_NODE',
       chainId: 'nyayavault-mainnet-1',
       currentHeight: height >= 0n ? height.toString() : '0',
       latestBlockHash: latest?.blockHash || null,

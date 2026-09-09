@@ -23,7 +23,8 @@ export type ViewTab =
   | 'audit'
   | 'about'
   | 'users'
-  | 'security-controls';
+  | 'security-controls'
+  | 'blockchain-network';
 
 interface SidebarProps {
   currentTab: ViewTab;
@@ -80,6 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     sections.push({
       title: 'ADMINISTRATION',
       items: [
+        { id: 'blockchain-network', label: 'Blockchain Network', icon: ShieldCheck },
         { id: 'users', label: 'User Management', icon: Users },
         { id: 'security-controls', label: 'Security Controls', icon: ShieldAlert },
       ],
