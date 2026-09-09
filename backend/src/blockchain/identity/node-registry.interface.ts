@@ -27,6 +27,7 @@ export interface INodeRegistry {
   getKeyByVersion(nodeId: NodeType, version: number): NodeKeyRecord | null;
   isAuthorized(nodeId: NodeType): boolean;
   registerNode(node: NodeIdentity): void;
+  registerPublicNode(publicNode: PublicNodeIdentity): void;
   rotateNodeKey(nodeId: NodeType, newKeypair?: KeyPairResult): NodeKeyRecord;
   revokeNodeKey(nodeId: NodeType, version: number): NodeKeyRecord;
   verifySignedPayload(

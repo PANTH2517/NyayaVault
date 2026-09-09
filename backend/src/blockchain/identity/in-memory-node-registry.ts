@@ -108,6 +108,31 @@ export class InMemoryNodeRegistry implements INodeRegistry {
     this.nodes.set(node.nodeId, node);
   }
 
+  registerPublicNode(publicNode: PublicNodeIdentity): void {
+    const activeKey = publicNode.activeKey || (publicNode.keys && publicNode.keys.find((k) => k.status === 'ACTIVE'));
+    if (!activeKey) return;
+
+    const existing = this.nodes.get(publicNode.nodeId);
+    if (existing) {
+      existing.currentVersion = publicNode.currentVersion;
+      const keyIdx = existing.keys.findIndex((k) => k.version === activeKey.version);
+      if (keyIdx >= 0) {
+        existing.keys[keyIdx] = { ...activeKey };
+      } else {
+        existing.keys.push({ ...activeKey });
+      }
+    } else {
+      const identity: NodeIdentity = {
+        nodeId: publicNode.nodeId,
+        organization: publicNode.organization,
+        currentVersion: publicNode.currentVersion,
+        keys: publicNode.keys ? publicNode.keys.map((k) => ({ ...k })) : [{ ...activeKey }],
+        privateKeysByVersion: new Map(),
+      };
+      this.nodes.set(publicNode.nodeId, identity);
+    }
+  }
+
   rotateNodeKey(nodeId: NodeType, newKeypair?: KeyPairResult): NodeKeyRecord {
     const node = this.nodes.get(nodeId);
     if (!node) {

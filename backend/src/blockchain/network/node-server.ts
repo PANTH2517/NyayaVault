@@ -146,6 +146,14 @@ export class NodeServer {
       return;
     }
 
+    // Route: GET /api/v1/node/identity
+    if (method === 'GET' && url.startsWith('/api/v1/node/identity')) {
+      const publicNode = this.nodeRegistry.getPublicNode(this.config.nodeId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(publicNode));
+      return;
+    }
+
     // Route: GET /api/v1/node/status
     if (method === 'GET' && url.startsWith('/api/v1/node/status')) {
       const state = await this.runtime.getNodeState();
@@ -189,6 +197,9 @@ export class NodeServer {
       }
 
       const { params, policyId, timeoutMs } = payload;
+      if (typeof this.transport.syncPeerIdentities === 'function') {
+        await this.transport.syncPeerIdentities();
+      }
       const resVal = await this.runtime.proposeAndCommitAnchor(params, policyId, timeoutMs);
       const statusCode = resVal.valid ? 200 : 400;
       res.writeHead(statusCode, { 'Content-Type': 'application/json' });
