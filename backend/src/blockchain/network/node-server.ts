@@ -31,16 +31,19 @@ export class NodeServer {
     this.config = config;
     this.nodeRegistry = nodeRegistry;
 
-    // Ensure node identity is initialized in registry
-    let identity = this.nodeRegistry.getNode(config.nodeId);
-    if (!identity) {
-      identity = NodeKeyProvider.createNodeIdentity(
-        config.nodeId,
-        `NyayaVault ${config.nodeId}`,
-        config.privateKeyPem,
-      );
-      this.nodeRegistry.registerNode(identity);
+    // Ensure all 4 permissioned node identities are initialized in registry topology
+    for (const type of ['POLICE_NODE', 'PROSECUTION_NODE', 'COURT_NODE', 'ADMIN_NODE'] as NodeType[]) {
+      if (!this.nodeRegistry.getNode(type)) {
+        const keyPem = type === config.nodeId ? config.privateKeyPem : undefined;
+        const id = NodeKeyProvider.createNodeIdentity(
+          type,
+          `NyayaVault ${type}`,
+          keyPem,
+        );
+        this.nodeRegistry.registerNode(id);
+      }
     }
+    const identity = this.nodeRegistry.getNode(config.nodeId)!;
 
     this.transport = new HttpNodeTransport({
       nodeId: config.nodeId,
