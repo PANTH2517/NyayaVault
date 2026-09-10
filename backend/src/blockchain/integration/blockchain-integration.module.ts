@@ -7,6 +7,7 @@
 
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { AuthModule } from '../../auth/auth.module';
 import { BlockchainEventMapper } from './blockchain-event-mapper';
 import { BlockchainTransactionBuilder } from './blockchain-transaction-builder';
 import { BlockchainAnchorService } from './blockchain-anchor.service';
@@ -17,7 +18,7 @@ import { BlockchainObservabilityService } from './blockchain-observability.servi
 import { BlockchainController } from './blockchain.controller';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AuthModule],
   controllers: [BlockchainController],
   providers: [
     BlockchainEventMapper,
