@@ -13,6 +13,8 @@ import {
   IncidentStatus,
   RoleName,
   RegistrationRequest,
+  EvidenceShareItem,
+  ShareStatus,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -545,5 +547,71 @@ export const api = {
       method: 'POST',
     });
   },
-};
 
+  // Evidence Sharing (Phase 1T)
+  async getEligibleRecipients(caseId: string) {
+    return request<User[]>(`/cases/${caseId}/eligible-recipients`);
+  },
+
+  async createShare(versionId: string, targetUserId: string, expirationHours: number) {
+    return request<{
+      shareId: string;
+      rawToken: string;
+      expiresAt: string;
+      targetUser: User;
+      version: { id: string; versionNumber: number; title: string };
+    }>('/shares', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versionId, targetUserId, expirationHours }),
+    });
+  },
+
+  async getSharesForVersion(versionId: string) {
+    return request<EvidenceShareItem[]>(`/shares/version/${versionId}`);
+  },
+
+  async revokeShare(shareId: string) {
+    return request<{ id: string; status: ShareStatus; revokedAt: string; message: string }>(
+      `/shares/${shareId}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  async accessSharedEvidence(token: string) {
+    const response = await fetch(`${API_BASE}/shares/access`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeader(),
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ token }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const errorJson = await response.json();
+        if (errorJson.message) {
+          errorMessage = Array.isArray(errorJson.message)
+            ? errorJson.message.join(', ')
+            : errorJson.message;
+        }
+      } catch (_) {}
+      throw new Error(errorMessage);
+    }
+
+    const contentDisposition = response.headers.get('Content-Disposition') || '';
+    let filename = 'shared_evidence.bin';
+    const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/);
+    if (filenameMatch && filenameMatch[1]) {
+      filename = filenameMatch[1];
+    }
+
+    const blob = await response.blob();
+    const sha256Hash = response.headers.get('X-Evidence-SHA256') || undefined;
+
+    return { blob, filename, sha256Hash };
+  },
+};

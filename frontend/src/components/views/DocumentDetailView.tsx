@@ -19,11 +19,13 @@ import {
   Eye,
   FileCode,
   Check,
+  Share2,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Document, DocumentVersion, Approval } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { getEvidenceTypeLabel } from '../../utils/evidenceTypes';
+import { ShareEvidenceModal } from './ShareEvidenceModal';
 import {
   MotionReveal,
   MotionStagger,
@@ -73,6 +75,8 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
   const [isApproveOpen, setIsApproveOpen] = useState(false);
   const [approvalComments, setApprovalComments] = useState('');
   const [approving, setApproving] = useState(false);
+
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
@@ -416,14 +420,24 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
           </h2>
 
           {selectedVer && (
-            <button
-              onClick={() => handleDownloadAndVerify(selectedVer)}
-              disabled={downloading || integrityState === 'COMPROMISED'}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-500/20 disabled:opacity-50"
-            >
-              <Download className="w-4 h-4" />
-              <span>{downloading ? 'Downloading...' : 'Download Verified File'}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsShareModalOpen(true)}
+                disabled={integrityState === 'COMPROMISED'}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-400 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all disabled:opacity-50"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>Share Evidence</span>
+              </button>
+              <button
+                onClick={() => handleDownloadAndVerify(selectedVer)}
+                disabled={downloading || integrityState === 'COMPROMISED'}
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-500/20 disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                <span>{downloading ? 'Downloading...' : 'Download Verified File'}</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -1033,6 +1047,18 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Share Evidence Modal */}
+      {selectedVer && (
+        <ShareEvidenceModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          versionId={selectedVer.id}
+          documentTitle={doc.title}
+          versionNumber={selectedVer.versionNumber}
+          caseId={doc.caseId}
+        />
       )}
     </div>
   );

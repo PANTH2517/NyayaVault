@@ -17,6 +17,7 @@ import { AboutView } from './components/views/AboutView';
 import { UserManagementView } from './components/views/UserManagementView';
 import { SecurityControlsView } from './components/views/SecurityControlsView';
 import { BlockchainObservabilityView } from './components/views/BlockchainObservabilityView';
+import { SharedEvidenceRedemptionView } from './components/views/SharedEvidenceRedemptionView';
 import { MotionPage } from './components/motion/MotionPage';
 import { CinematicBackground } from './components/motion/CinematicBackground';
 
@@ -24,6 +25,7 @@ const MainLayout: React.FC = () => {
   const { user, loading } = useAuth();
   const [currentTab, setCurrentTab] = useState<ViewTab>('dashboard');
   const [isResetRoute, setIsResetRoute] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
 
   // Sub-view drilldown state
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
@@ -33,6 +35,19 @@ const MainLayout: React.FC = () => {
     if (window.location.pathname === '/reset-password') {
       setIsResetRoute(true);
     }
+
+    const checkHashToken = () => {
+      if (window.location.hash.includes('token=')) {
+        const match = window.location.hash.match(/token=([a-fA-F0-9]{64})/);
+        if (match && match[1]) {
+          setShareToken(match[1]);
+        }
+      }
+    };
+
+    checkHashToken();
+    window.addEventListener('hashchange', checkHashToken);
+    return () => window.removeEventListener('hashchange', checkHashToken);
   }, []);
 
   if (isResetRoute) {
@@ -164,6 +179,13 @@ const MainLayout: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {shareToken && (
+        <SharedEvidenceRedemptionView
+          initialToken={shareToken}
+          onClose={() => setShareToken(null)}
+        />
+      )}
     </div>
   );
 };

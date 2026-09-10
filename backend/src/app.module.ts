@@ -12,6 +12,7 @@ import { SecurityModule } from './security/security.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { BlockchainIntegrationModule } from './blockchain/integration/blockchain-integration.module';
 import { IntegrityMonitoringModule } from './integrity-monitoring/integrity-monitoring.module';
+import { SharesModule } from './shares/shares.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { IntegrityMonitoringModule } from './integrity-monitoring/integrity-moni
     DashboardModule,
     BlockchainIntegrationModule,
     IntegrityMonitoringModule,
+    SharesModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -173,3 +173,30 @@ export interface SearchDocumentsResponse {
   limit: number;
   totalPages: number;
 }
+
+export type ShareStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+
+export interface EvidenceShareItem {
+  id: string;
+  versionId: string;
+  caseId: string;
+  issuedBy: User;
+  targetUser: User;
+  revokedBy?: User | null;
+  expiresAt: string;
+  revokedAt?: string | null;
+  status: ShareStatus;
+  createdAt: string;
+}
+
+export interface CreateShareResult {
+  shareId: string;
+  rawToken: string;
+  expiresAt: string;
+  targetUser: User;
+  version: {
+    id: string;
+    versionNumber: number;
+    title: string;
+  };
+}

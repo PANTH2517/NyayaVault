@@ -68,6 +68,17 @@ enum AuditEventType {
   MFA_RECOVERY_CODES_REGENERATED
   MFA_DISABLED
   MFA_ADMIN_RESET
+  SHARE_CREATED
+  SHARE_ACCESSED
+  SHARE_ACCESS_DENIED
+  SHARE_REVOKED
+  SHARE_EXPIRED
+}
+
+enum ShareStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
 }
 
 enum RegistrationStatus {
@@ -126,6 +137,9 @@ model User {
   resetTokens           PasswordResetToken[]
   reviewedRegistrations RegistrationRequest[] @relation("RegistrationReviewer")
   mfaRecoveryCodes      MfaRecoveryCode[]
+  issuedShares          EvidenceShare[]       @relation("ShareIssuer")
+  receivedShares        EvidenceShare[]       @relation("ShareRecipient")
+  revokedShares         EvidenceShare[]       @relation("ShareRevoker")
 
   @@map("users")
 }
@@ -209,6 +223,7 @@ model Case {
   documents    Document[]
   auditEvents  AuditEvent[]
   incidents    SecurityIncident[]
+  evidenceShares EvidenceShare[]
 
   @@map("cases")
 }
@@ -269,6 +284,7 @@ model DocumentVersion {
   auditEvents       AuditEvent[]
   approvals         Approval[]
   incidents         SecurityIncident[]
+  shares            EvidenceShare[]
 
   @@unique([documentId, versionNumber])
   @@map("document_versions")
@@ -480,4 +496,36 @@ model BlockchainApplicationAnchor {
   @@index([caseId])
   @@index([status])
   @@map("blockchain_application_anchors")
+}
+
+// --------------------------------------------------------
+// Phase 1T: Secure Time-Bound Evidence Sharing
+// --------------------------------------------------------
+
+model EvidenceShare {
+  id           String      @id @default(uuid())
+  versionId    String
+  caseId       String
+  issuedById   String
+  targetUserId String
+  tokenHash    String      @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  revokedById  String?
+  status       ShareStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  version    DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  case       Case            @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  issuedBy   User            @relation("ShareIssuer", fields: [issuedById], references: [id], onDelete: Restrict)
+  targetUser User            @relation("ShareRecipient", fields: [targetUserId], references: [id], onDelete: Restrict)
+  revokedBy  User?           @relation("ShareRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@index([tokenHash])
+  @@index([versionId])
+  @@index([caseId])
+  @@index([targetUserId])
+  @@index([issuedById])
+  @@map("evidence_shares")
 }
