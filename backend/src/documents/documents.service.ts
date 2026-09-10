@@ -11,6 +11,7 @@ import { SupabaseStorageService } from './supabase-storage.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { ApproveDocumentDto } from './dto/approve-document.dto';
 import { SearchDocumentsDto } from './dto/search-documents.dto';
+import { UpdateDocumentMetadataDto } from './dto/update-document-metadata.dto';
 import { UserPayload } from '../auth/decorators/current-user.decorator';
 import { AuditChainService } from '../security/audit-chain.service';
 import { DocumentIntegrityService } from '../security/document-integrity.service';
@@ -100,6 +101,10 @@ export class DocumentsService {
               title: uploadDto.title,
               documentType: uploadDto.documentType,
               classification: uploadDto.classification || DocumentClassification.CONFIDENTIAL,
+              description: uploadDto.description !== undefined ? uploadDto.description : undefined,
+              exhibitNumber: uploadDto.exhibitNumber !== undefined ? uploadDto.exhibitNumber : undefined,
+              tags: uploadDto.tags && uploadDto.tags.length > 0 ? uploadDto.tags : undefined,
+              metadata: uploadDto.metadata !== undefined ? uploadDto.metadata : undefined,
               currentStatus: DocumentStatus.DRAFT,
               createdById: user.userId,
             },
@@ -803,6 +808,170 @@ export class DocumentsService {
   }
 
   /**
+   * Update Evidence Classification & Metadata / Tags (Protected by DocumentAccessGuard & CBAC)
+   */
+  async updateMetadata(
+    documentId: string,
+    dto: UpdateDocumentMetadataDto,
+    user: UserPayload,
+  ) {
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!document) {
+      throw new NotFoundException(`Document with ID '${documentId}' not found`);
+    }
+
+    // 1. SEALED Check (Fail-closed invariant)
+    if (document.currentStatus === DocumentStatus.SEALED) {
+      throw new ForbiddenException('Cannot modify metadata of SEALED evidence');
+    }
+
+    // 2. Role & Case Assignment Authorization Checks
+    if (user.role === RoleName.PROSECUTOR) {
+      throw new ForbiddenException(`Role '${user.role}' is not permitted to modify document metadata`);
+    }
+
+    if (user.role === RoleName.INVESTIGATING_OFFICER || user.role === RoleName.SUPERVISOR) {
+      const assignment = await this.prisma.caseAssignment.findUnique({
+        where: {
+          caseId_userId: {
+            caseId: document.caseId,
+            userId: user.userId,
+          },
+        },
+      });
+
+      if (!assignment) {
+        throw new ForbiddenException('Access denied: You are not assigned to this case');
+      }
+
+      if (document.currentStatus !== DocumentStatus.DRAFT && document.currentStatus !== DocumentStatus.UNDER_REVIEW) {
+        throw new ForbiddenException(
+          `Cannot modify metadata for document in state '${document.currentStatus}'. Only DRAFT or UNDER_REVIEW documents can be edited.`
+        );
+      }
+
+      if (user.role === RoleName.INVESTIGATING_OFFICER && dto.classification !== undefined && dto.classification !== document.classification) {
+        throw new ForbiddenException('Investigating officers are not permitted to change document classification post-upload');
+      }
+    } else if (user.role !== RoleName.ADMIN) {
+      throw new ForbiddenException(`Role '${user.role}' is not authorized to modify document metadata`);
+    }
+
+    // 3. Exact Diffing for Logical Metadata & Classification Changes
+    const previousMetadataDiff: Record<string, any> = {};
+    const updatedMetadataDiff: Record<string, any> = {};
+
+    let hasMetadataChange = false;
+    let hasClassificationChange = false;
+
+    if (dto.title !== undefined && dto.title !== document.title) {
+      previousMetadataDiff.title = document.title;
+      updatedMetadataDiff.title = dto.title;
+      hasMetadataChange = true;
+    }
+
+    if (dto.description !== undefined && dto.description !== document.description) {
+      previousMetadataDiff.description = document.description;
+      updatedMetadataDiff.description = dto.description;
+      hasMetadataChange = true;
+    }
+
+    if (dto.documentType !== undefined && dto.documentType !== document.documentType) {
+      previousMetadataDiff.documentType = document.documentType;
+      updatedMetadataDiff.documentType = dto.documentType;
+      hasMetadataChange = true;
+    }
+
+    if (dto.exhibitNumber !== undefined && dto.exhibitNumber !== document.exhibitNumber) {
+      previousMetadataDiff.exhibitNumber = document.exhibitNumber;
+      updatedMetadataDiff.exhibitNumber = dto.exhibitNumber;
+      hasMetadataChange = true;
+    }
+
+    if (dto.tags !== undefined) {
+      const currentTags = document.tags || [];
+      const isTagsDifferent =
+        currentTags.length !== dto.tags.length ||
+        currentTags.some((t, idx) => t !== dto.tags![idx]);
+      if (isTagsDifferent) {
+        previousMetadataDiff.tags = currentTags;
+        updatedMetadataDiff.tags = dto.tags;
+        hasMetadataChange = true;
+      }
+    }
+
+    if (dto.metadata !== undefined) {
+      const currentMetaStr = JSON.stringify(document.metadata || null);
+      const newMetaStr = JSON.stringify(dto.metadata || null);
+      if (currentMetaStr !== newMetaStr) {
+        previousMetadataDiff.metadata = document.metadata;
+        updatedMetadataDiff.metadata = dto.metadata;
+        hasMetadataChange = true;
+      }
+    }
+
+    if (dto.classification !== undefined && dto.classification !== document.classification) {
+      hasClassificationChange = true;
+    }
+
+    // No-op protection: do not create audit events if no fields actually changed
+    if (!hasMetadataChange && !hasClassificationChange) {
+      return document;
+    }
+
+    // 4. Update Document Model
+    const updateData: any = {};
+    if (dto.title !== undefined) updateData.title = dto.title;
+    if (dto.description !== undefined) updateData.description = dto.description;
+    if (dto.documentType !== undefined) updateData.documentType = dto.documentType;
+    if (dto.exhibitNumber !== undefined) updateData.exhibitNumber = dto.exhibitNumber;
+    if (dto.tags !== undefined) updateData.tags = dto.tags;
+    if (dto.metadata !== undefined) updateData.metadata = dto.metadata;
+    if (dto.classification !== undefined) updateData.classification = dto.classification;
+
+    const updatedDocument = await this.prisma.document.update({
+      where: { id: documentId },
+      data: updateData,
+    });
+
+    // 5. Record Hash-Chained Audit Events in Deterministic Order
+    if (hasMetadataChange) {
+      await this.auditChainService.recordEvent({
+        eventType: AuditEventType.EVIDENCE_METADATA_UPDATED,
+        userId: user.userId,
+        caseId: document.caseId,
+        documentId,
+        versionId: document.currentVersionId || undefined,
+        action: `Updated metadata for evidence '${updatedDocument.title}'`,
+        metadata: {
+          previous: previousMetadataDiff,
+          updated: updatedMetadataDiff,
+        },
+      });
+    }
+
+    if (hasClassificationChange) {
+      await this.auditChainService.recordEvent({
+        eventType: AuditEventType.EVIDENCE_CLASSIFIED,
+        userId: user.userId,
+        caseId: document.caseId,
+        documentId,
+        versionId: document.currentVersionId || undefined,
+        action: `Updated classification for evidence '${updatedDocument.title}' from ${document.classification} to ${dto.classification}`,
+        metadata: {
+          previousClassification: document.classification,
+          newClassification: dto.classification,
+        },
+      });
+    }
+
+    return updatedDocument;
+  }
+
+  /**
    * Search Documents with CBAC Authorization & Multi-Field Filtering
    */
   async searchDocuments(user: UserPayload, queryParams: SearchDocumentsDto) {
@@ -828,6 +997,10 @@ export class DocumentsService {
       whereClause.caseId = queryParams.caseId;
     }
 
+    if (queryParams.documentType) {
+      whereClause.documentType = queryParams.documentType;
+    }
+
     if (queryParams.classification) {
       whereClause.classification = queryParams.classification;
     }
@@ -836,16 +1009,25 @@ export class DocumentsService {
       whereClause.currentStatus = queryParams.status;
     }
 
+    if (queryParams.tags) {
+      const tagList = Array.isArray(queryParams.tags) ? queryParams.tags : [queryParams.tags];
+      if (tagList.length > 0) {
+        whereClause.tags = { hasSome: tagList };
+      }
+    }
+
     // 3. Search Query Keyword Filter
     if (queryParams.q && queryParams.q.trim() !== '') {
       const qStr = queryParams.q.trim();
-      const existingCaseWhere = whereClause.case || {};
 
       whereClause.AND = [
         {
           OR: [
             { title: { contains: qStr, mode: 'insensitive' } },
             { documentType: { contains: qStr, mode: 'insensitive' } },
+            { description: { contains: qStr, mode: 'insensitive' } },
+            { exhibitNumber: { contains: qStr, mode: 'insensitive' } },
+            { tags: { hasSome: [qStr] } },
             { case: { caseNumber: { contains: qStr, mode: 'insensitive' } } },
             { case: { title: { contains: qStr, mode: 'insensitive' } } },
           ],

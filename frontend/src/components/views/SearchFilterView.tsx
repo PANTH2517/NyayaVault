@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Filter, FileText, ChevronLeft, ChevronRight, ArrowRight, Clock, CheckCircle2, Lock, ShieldCheck } from 'lucide-react';
+import { Search, Filter, FileText, ChevronLeft, ChevronRight, ArrowRight, Clock, CheckCircle2, Lock, ShieldCheck, Tag, Hash } from 'lucide-react';
 import { api } from '../../services/api';
 import { Document, DocumentClassification, DocumentStatus } from '../../types';
 import { MotionReveal } from '../motion';
-import { getEvidenceTypeLabel } from '../../utils/evidenceTypes';
+import { getEvidenceTypeLabel, AUTHORITATIVE_EVIDENCE_TYPES } from '../../utils/evidenceTypes';
 
 interface SearchFilterViewProps {
   onSelectDocument: (documentId: string) => void;
@@ -11,6 +11,8 @@ interface SearchFilterViewProps {
 
 export const SearchFilterView: React.FC<SearchFilterViewProps> = ({ onSelectDocument }) => {
   const [q, setQ] = useState('');
+  const [documentTypeFilter, setDocumentTypeFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
   const [classification, setClassification] = useState<DocumentClassification | ''>('');
   const [status, setStatus] = useState<DocumentStatus | ''>('');
   const [page, setPage] = useState(1);
@@ -27,6 +29,8 @@ export const SearchFilterView: React.FC<SearchFilterViewProps> = ({ onSelectDocu
     try {
       const res = await api.searchDocuments({
         q: q || undefined,
+        documentType: documentTypeFilter || undefined,
+        tags: tagFilter.trim() || undefined,
         classification: (classification as DocumentClassification) || undefined,
         status: (status as DocumentStatus) || undefined,
         page: targetPage,
@@ -46,7 +50,7 @@ export const SearchFilterView: React.FC<SearchFilterViewProps> = ({ onSelectDocu
   useEffect(() => {
     executeSearch(1);
     setPage(1);
-  }, [q, classification, status]);
+  }, [q, documentTypeFilter, tagFilter, classification, status]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages) {
@@ -83,7 +87,7 @@ export const SearchFilterView: React.FC<SearchFilterViewProps> = ({ onSelectDocu
       </div>
 
       {/* Filter Controls Bar */}
-      <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl backdrop-blur-xl">
+      <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl backdrop-blur-xl space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {/* Keyword Search */}
           <div className="relative">
@@ -92,7 +96,7 @@ export const SearchFilterView: React.FC<SearchFilterViewProps> = ({ onSelectDocu
               type="text"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search title, case #, type..."
+              placeholder="Search title, case #, description..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono"
             />
           </div>
@@ -121,6 +125,34 @@ export const SearchFilterView: React.FC<SearchFilterViewProps> = ({ onSelectDocu
             <option value="APPROVED">APPROVED</option>
             <option value="SEALED">SEALED</option>
           </select>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-800/60">
+          {/* Evidence Category / Type Filter */}
+          <select
+            value={documentTypeFilter}
+            onChange={(e) => setDocumentTypeFilter(e.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-amber-500 font-mono"
+          >
+            <option value="">All Evidence Categories / Types</option>
+            {AUTHORITATIVE_EVIDENCE_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Tag Filter */}
+          <div className="relative">
+            <Tag className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+            <input
+              type="text"
+              value={tagFilter}
+              onChange={(e) => setTagFilter(e.target.value)}
+              placeholder="Filter by tag (e.g. FORENSIC, CYBER)..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono"
+            />
+          </div>
         </div>
       </div>
 
@@ -167,8 +199,13 @@ export const SearchFilterView: React.FC<SearchFilterViewProps> = ({ onSelectDocu
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1">
-                    <div className="text-[10px] uppercase font-mono font-bold text-amber-400 tracking-wider">
-                      {getEvidenceTypeLabel(doc.documentType)} &bull; {doc.classification}
+                    <div className="text-[10px] uppercase font-mono font-bold text-amber-400 tracking-wider flex items-center gap-1.5 flex-wrap">
+                      <span>{getEvidenceTypeLabel(doc.documentType)} &bull; {doc.classification}</span>
+                      {doc.exhibitNumber && (
+                        <span className="text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                          Ex #{doc.exhibitNumber}
+                        </span>
+                      )}
                     </div>
                     <h3 className="text-base font-extrabold text-white group-hover:text-amber-300 transition-colors">
                       {doc.title}
@@ -187,6 +224,22 @@ export const SearchFilterView: React.FC<SearchFilterViewProps> = ({ onSelectDocu
                     {st.label}
                   </span>
                 </div>
+
+                {doc.description && (
+                  <p className="text-xs text-slate-400 line-clamp-2 font-sans">
+                    {doc.description}
+                  </p>
+                )}
+
+                {doc.tags && doc.tags.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {doc.tags.map((t, idx) => (
+                      <span key={idx} className="text-[10px] font-mono text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                        #{t}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 {currentVer && (
                   <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 font-mono text-[11px] text-slate-400 flex items-center justify-between">

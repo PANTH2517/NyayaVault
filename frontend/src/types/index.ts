@@ -98,6 +98,10 @@ export interface Document {
   title: string;
   documentType: string;
   classification: DocumentClassification;
+  description?: string;
+  exhibitNumber?: string;
+  tags?: string[];
+  metadata?: Record<string, any>;
   currentStatus: DocumentStatus;
   currentVersionId?: string;
   createdById: string;

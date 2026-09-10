@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
   Res,
+  Patch,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -18,6 +19,7 @@ import { DocumentsService } from './documents.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { ApproveDocumentDto } from './dto/approve-document.dto';
 import { SearchDocumentsDto } from './dto/search-documents.dto';
+import { UpdateDocumentMetadataDto } from './dto/update-document-metadata.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CaseAccessGuard } from '../cases/guards/case-access.guard';
 import { DocumentAccessGuard } from './guards/document-access.guard';
@@ -180,5 +182,20 @@ export class DocumentsController {
   @UseGuards(DocumentAccessGuard)
   async getApprovalsForDocument(@Param('id') documentId: string) {
     return this.documentsService.getApprovalsForDocument(documentId);
+  }
+
+  /**
+   * PATCH /api/v1/documents/:id/metadata
+   * Update evidence classification and metadata/tags (Protected by DocumentAccessGuard)
+   */
+  @Patch('documents/:id/metadata')
+  @UseGuards(DocumentAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async updateMetadata(
+    @Param('id') documentId: string,
+    @Body() dto: UpdateDocumentMetadataDto,
+    @CurrentUser() user: UserPayload,
+  ) {
+    return this.documentsService.updateMetadata(documentId, dto, user);
   }
 }

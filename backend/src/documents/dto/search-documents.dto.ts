@@ -1,5 +1,5 @@
 import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { DocumentClassification, DocumentStatus } from '@prisma/client';
 
 export class SearchDocumentsDto {
@@ -11,6 +11,10 @@ export class SearchDocumentsDto {
   @IsOptional()
   caseId?: string;
 
+  @IsString()
+  @IsOptional()
+  documentType?: string;
+
   @IsEnum(DocumentClassification, { message: 'Invalid classification filter' })
   @IsOptional()
   classification?: DocumentClassification;
@@ -18,6 +22,15 @@ export class SearchDocumentsDto {
   @IsEnum(DocumentStatus, { message: 'Invalid status filter' })
   @IsOptional()
   status?: DocumentStatus;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return value.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+    return value;
+  })
+  tags?: string | string[];
 
   @Type(() => Number)
   @IsInt()

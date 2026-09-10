@@ -20,12 +20,16 @@ import {
   FileCode,
   Check,
   Share2,
+  FileEdit,
+  Hash,
+  Tag,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Document, DocumentVersion, Approval } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { getEvidenceTypeLabel } from '../../utils/evidenceTypes';
 import { ShareEvidenceModal } from './ShareEvidenceModal';
+import { EditMetadataModal } from './EditMetadataModal';
 import {
   MotionReveal,
   MotionStagger,
@@ -77,6 +81,7 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
   const [approving, setApproving] = useState(false);
 
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isEditMetadataOpen, setIsEditMetadataOpen] = useState(false);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
@@ -334,6 +339,7 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
   const canApprove = doc.currentStatus === 'UNDER_REVIEW' && (user?.role === 'ADMIN' || user?.role === 'SUPERVISOR');
   const canSeal = doc.currentStatus === 'APPROVED' && (user?.role === 'ADMIN' || user?.role === 'SUPERVISOR');
   const canRevise = doc.currentStatus !== 'SEALED' && (user?.role === 'ADMIN' || user?.role === 'INVESTIGATING_OFFICER');
+  const canEditMetadata = doc.currentStatus !== 'SEALED' && (user?.role === 'ADMIN' || user?.role === 'INVESTIGATING_OFFICER' || user?.role === 'SUPERVISOR');
 
   return (
     <div className="space-y-6 font-sans pb-12">
@@ -359,6 +365,12 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
               <span className="font-bold text-slate-400 bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800">
                 {doc.classification}
               </span>
+              {doc.exhibitNumber && (
+                <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1">
+                  <Hash className="w-3 h-3 text-emerald-400" />
+                  Exhibit #{doc.exhibitNumber}
+                </span>
+              )}
               {doc.case && (
                 <span className="text-slate-400 bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800">
                   Case #{doc.case.caseNumber} &bull; {doc.case.title}
@@ -369,6 +381,26 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
               {doc.title}
             </h1>
+
+            {doc.description && (
+              <p className="text-xs text-slate-300 leading-relaxed max-w-2xl bg-slate-950/60 p-3 rounded-2xl border border-slate-800/80 font-sans">
+                {doc.description}
+              </p>
+            )}
+
+            {doc.tags && doc.tags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                {doc.tags.map((t, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] font-mono"
+                  >
+                    <Tag className="w-2.5 h-2.5" />
+                    #{t}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -526,6 +558,15 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
       {/* 3. WORKFLOW ACTIONS BAR */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/90 border border-slate-800">
         <div className="flex items-center gap-2 flex-wrap">
+          {canEditMetadata && (
+            <button
+              onClick={() => setIsEditMetadataOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold text-xs border border-amber-500/30 cursor-pointer"
+            >
+              <FileEdit className="w-4 h-4 text-amber-400" />
+              <span>Edit Metadata & Tags</span>
+            </button>
+          )}
           {canRevise && (
             <button
               onClick={() => setIsRevisionOpen(true)}
@@ -1060,6 +1101,14 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
           caseId={doc.caseId}
         />
       )}
+
+      {/* Edit Metadata Modal */}
+      <EditMetadataModal
+        document={doc}
+        isOpen={isEditMetadataOpen}
+        onClose={() => setIsEditMetadataOpen(false)}
+        onSuccess={loadDocumentData}
+      />
     </div>
   );
 };

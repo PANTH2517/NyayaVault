@@ -390,6 +390,25 @@ export const api = {
     });
   },
 
+  async updateDocumentMetadata(
+    documentId: string,
+    data: {
+      title?: string;
+      description?: string;
+      documentType?: string;
+      classification?: DocumentClassification;
+      exhibitNumber?: string;
+      tags?: string[];
+      metadata?: Record<string, any>;
+    }
+  ) {
+    return request<Document>(`/documents/${documentId}/metadata`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+
   async getApprovals(documentId: string) {
     return request<Approval[]>(`/documents/${documentId}/approvals`);
   },
@@ -398,16 +417,20 @@ export const api = {
   async searchDocuments(params: {
     q?: string;
     caseId?: string;
+    documentType?: string;
     classification?: DocumentClassification;
     status?: DocumentStatus;
+    tags?: string;
     page?: number;
     limit?: number;
   }) {
     const query = new URLSearchParams();
     if (params.q) query.append('q', params.q);
     if (params.caseId) query.append('caseId', params.caseId);
+    if (params.documentType) query.append('documentType', params.documentType);
     if (params.classification) query.append('classification', params.classification);
     if (params.status) query.append('status', params.status);
+    if (params.tags) query.append('tags', params.tags);
     if (params.page) query.append('page', params.page.toString());
     if (params.limit) query.append('limit', params.limit.toString());
 

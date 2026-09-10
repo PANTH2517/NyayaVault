@@ -73,6 +73,8 @@ enum AuditEventType {
   SHARE_ACCESS_DENIED
   SHARE_REVOKED
   SHARE_EXPIRED
+  EVIDENCE_METADATA_UPDATED
+  EVIDENCE_CLASSIFIED
 }
 
 enum ShareStatus {
@@ -248,6 +250,10 @@ model Document {
   title            String
   documentType     String
   classification   DocumentClassification @default(CONFIDENTIAL)
+  description      String?
+  exhibitNumber    String?
+  tags             String[]               @default([])
+  metadata         Json?
   currentStatus    DocumentStatus         @default(DRAFT)
   currentVersionId String?                @unique
   createdById      String
