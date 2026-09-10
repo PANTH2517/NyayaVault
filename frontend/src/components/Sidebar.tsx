@@ -89,7 +89,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }
 
   return (
-    <aside className="w-64 bg-slate-900/80 border-r border-slate-800 p-4 flex flex-col justify-between shrink-0 font-sans backdrop-blur-xl z-20">
+    <aside
+      aria-label="Main Navigation"
+      className="hidden md:flex w-64 bg-slate-900/80 border-r border-slate-800 p-4 flex-col justify-between shrink-0 font-sans backdrop-blur-xl z-20"
+    >
       <div className="space-y-5">
         {sections.map((section) => (
           <div key={section.title} className="space-y-1">
@@ -103,6 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={item.id}
                   onClick={() => onTabChange(item.id as ViewTab)}
+                  aria-label={item.label}
                   className={`relative w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer group ${
                     isActive ? 'text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'
                   }`}

@@ -119,14 +119,14 @@ export const LoginView: React.FC = () => {
       <div className="max-w-md w-full space-y-6 z-10">
         {/* Branding Header */}
         <div className="text-center space-y-3">
-          <div className="inline-flex p-3 bg-slate-900 border border-slate-800 rounded-2xl text-amber-400 shadow-lg">
+          <div className="inline-flex p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-400 shadow-xl shadow-amber-500/10">
             <Shield className="w-10 h-10" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">
+          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center justify-center gap-2">
             NyayaVault
           </h1>
-          <p className="text-xs text-slate-400 font-semibold tracking-wide uppercase">
-            Secure Digital Evidence Management System
+          <p className="text-xs text-slate-400 font-semibold tracking-wider uppercase">
+            National Digital Evidence Management Portal
           </p>
         </div>
 

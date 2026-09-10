@@ -36,15 +36,24 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
     PROSECUTOR: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
   };
 
-  // Close search popover on outside click
+  // Close search popover on outside click or Escape key
   useEffect(() => {
     const handleClickOutside = (evt: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(evt.target as Node)) {
         setShowSearchPopover(false);
       }
     };
+    const handleKeyDown = (evt: KeyboardEvent) => {
+      if (evt.key === 'Escape') {
+        setShowSearchPopover(false);
+      }
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   // Debounced search logic over authorized backend endpoints
@@ -263,6 +272,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
 
           <button
             onClick={() => setIsMfaModalOpen(true)}
+            aria-label="Multi-Factor Authentication settings"
             className="p-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-amber-400 border border-slate-700 transition-all cursor-pointer"
             title="Multi-Factor Authentication settings"
           >
@@ -271,6 +281,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
 
           <button
             onClick={() => setIsPasswordModalOpen(true)}
+            aria-label="Change account password"
             className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
             title="Change password"
           >
@@ -279,6 +290,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
 
           <button
             onClick={() => logout()}
+            aria-label="Logout session"
             className="p-2 rounded-lg bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-700 transition-all cursor-pointer"
             title="Logout session"
           >
