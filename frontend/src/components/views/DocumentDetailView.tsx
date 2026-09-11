@@ -407,6 +407,64 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
             <WorkflowStateBadge status={doc.currentStatus} />
             {integrityState === 'VERIFIED' && <MotionStatus status="VERIFIED" label="BYTE VERIFIED" />}
             {integrityState === 'COMPROMISED' && <MotionStatus status="COMPROMISED" label="TAMPER DETECTED" />}
+            {/* NEW Integrity & Admissibility Summary Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="mt-4 p-5 rounded-xl bg-slate-900/80 border border-slate-800 shadow-lg backdrop-blur-lg"
+            >
+              {/* Determine visual state */}
+              {(() => {
+                const state = (() => {
+                  if (integrityState === 'VERIFIED' && blockchainVerification?.result === 'VERIFIED') return 'verified';
+                  if (integrityState === 'VERIFIED' && blockchainVerification?.result === 'PENDING') return 'pending';
+                  if (integrityState === 'VERIFIED' && blockchainVerification?.result === 'NOT_ANCHORED') return 'unavailable';
+                  if (integrityState === 'VERIFIED' && blockchainVerification?.result === 'CHAIN_UNAVAILABLE') return 'unavailable';
+                  if (integrityState === 'VERIFIED' && blockchainVerification?.result === 'INVALID') return 'compromised';
+                  if (integrityState === 'COMPROMISED') return 'compromised';
+                  // default pending for any other case
+                  return 'pending';
+                })();
+                const map = {
+                  verified: {
+                    bg: 'bg-emerald-600/20',
+                    border: 'border-emerald-500/40',
+                    icon: <CheckCircle2 className="w-5 h-5 text-emerald-400" />, 
+                    title: 'Cryptographically verified — the downloaded evidence bytes match the authoritative SHA-256 record, and the historical blockchain proof is valid.',
+                  },
+                  pending: {
+                    bg: 'bg-amber-600/20',
+                    border: 'border-amber-500/40',
+                    icon: <AlertTriangle className="w-5 h-5 text-amber-400" />, 
+                    title: 'Verification pending — the evidence has not yet received a completed blockchain confirmation.',
+                  },
+                  compromised: {
+                    bg: 'bg-rose-600/20',
+                    border: 'border-rose-500/40',
+                    icon: <ShieldAlert className="w-5 h-5 text-rose-400" />, 
+                    title: 'Integrity check failed — the current evidence bytes do not match the authoritative SHA-256 record. Access has been blocked.',
+                  },
+                  unavailable: {
+                    bg: 'bg-amber-600/20',
+                    border: 'border-amber-500/40',
+                    icon: <AlertCircle className="w-5 h-5 text-amber-400" />, 
+                    title: 'Blockchain proof unavailable — the evidence has an authoritative integrity record, but no confirmed blockchain anchor is available.',
+                  },
+                };
+                const cfg = map[state];
+                return (
+                  <div className={`flex items-start gap-3 p-4 rounded-lg ${cfg.bg} ${cfg.border} border` }>
+                    {cfg.icon}
+                    <div className="flex flex-col">
+                      <p className="text-sm font-medium text-slate-200">Evidence Integrity &amp; Admissibility</p>
+                      <p className="text-xs text-slate-300 mt-1 max-w-2xl">{cfg.title}</p>
+                      <p className="text-xxs text-slate-400 mt-2 italic">Technical verification supports chain-of-custody review; legal admissibility remains a matter for the appropriate authority.</p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </motion.div>
           </div>
         </div>
 
@@ -555,61 +613,184 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
         ) : null}
       </div>
 
-      {/* 3. WORKFLOW ACTIONS BAR */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/90 border border-slate-800">
-        <div className="flex items-center gap-2 flex-wrap">
-          {canEditMetadata && (
-            <button
-              onClick={() => setIsEditMetadataOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold text-xs border border-amber-500/30 cursor-pointer"
-            >
-              <FileEdit className="w-4 h-4 text-amber-400" />
-              <span>Edit Metadata & Tags</span>
-            </button>
-          )}
-          {canRevise && (
-            <button
-              onClick={() => setIsRevisionOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 cursor-pointer"
-            >
-              <Upload className="w-4 h-4 text-sky-400" />
-              <span>Upload New Revision</span>
-            </button>
-          )}
+      {/* 3. WORKFLOW ACTIONS BAR & CONTEXTUAL LIFECYCLE GUIDANCE */}
+      <div className="space-y-3 p-5 rounded-3xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl shadow-xl">
+        <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-800/80 pb-3">
+          <div className="flex items-center gap-2">
+            <LockKeyhole className="w-4 h-4 text-amber-400" />
+            <h3 className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wider">
+              Evidence Lifecycle Controls & Guidance
+            </h3>
+          </div>
+          <span className="text-[11px] font-mono text-slate-400">
+            Current Status: <strong className="text-amber-400">{doc.currentStatus}</strong>
+          </span>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          {canSubmit && (
-            <button
-              onClick={handleSubmitForReview}
-              disabled={actionLoading}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 font-bold text-xs cursor-pointer disabled:opacity-50"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>Submit for Review</span>
-            </button>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Metadata & Revision Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {canEditMetadata ? (
+              <button
+                onClick={() => setIsEditMetadataOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold text-xs border border-amber-500/30 cursor-pointer transition-all"
+              >
+                <FileEdit className="w-4 h-4 text-amber-400" />
+                <span>Edit Metadata & Tags</span>
+              </button>
+            ) : (
+              <div className="group relative inline-block" tabIndex={0} aria-describedby="metadata-help">
+                <button
+                  disabled
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-950/60 text-slate-500 font-semibold text-xs border border-slate-800 cursor-not-allowed opacity-60"
+                  title={doc.currentStatus === 'SEALED' ? 'Metadata can no longer be changed after sealing.' : 'Prosecutorial scope is read-only for court evidence.'}
+                >
+                  <FileEdit className="w-4 h-4 text-slate-600" />
+                  <span>Edit Metadata</span>
+                </button>
+                <span id="metadata-help" className="absolute bottom-full left-0 mb-1.5 hidden group-hover:block group-focus:block px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[10px] text-slate-300 whitespace-nowrap shadow-xl z-20 font-mono">
+                  {doc.currentStatus === 'SEALED' ? 'Metadata can no longer be changed after sealing.' : 'Prosecutorial scope is read-only for court evidence.'}
+                </span>
+              </div>
+            )}
 
-          {canApprove && (
-            <button
-              onClick={() => setIsApproveOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 font-bold text-xs cursor-pointer"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Approve Version</span>
-            </button>
-          )}
+            {canRevise ? (
+              <button
+                onClick={() => setIsRevisionOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 cursor-pointer transition-all"
+              >
+                <Upload className="w-4 h-4 text-sky-400" />
+                <span>Upload New Revision</span>
+              </button>
+            ) : (
+              <div className="group relative inline-block" tabIndex={0} aria-describedby="revise-help">
+                <button
+                  disabled
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-950/60 text-slate-500 font-semibold text-xs border border-slate-800 cursor-not-allowed opacity-60"
+                  title={doc.currentStatus === 'SEALED' ? 'Sealed evidence cannot receive new revisions.' : 'Revision upload requires Investigating Officer or Admin role.'}
+                >
+                  <Upload className="w-4 h-4 text-slate-600" />
+                  <span>Upload Revision</span>
+                </button>
+                <span id="revise-help" className="absolute bottom-full left-0 mb-1.5 hidden group-hover:block group-focus:block px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[10px] text-slate-300 whitespace-nowrap shadow-xl z-20 font-mono">
+                  {doc.currentStatus === 'SEALED' ? 'Sealed evidence cannot receive new revisions.' : 'Revision upload requires Investigating Officer or Admin role.'}
+                </span>
+              </div>
+            )}
+          </div>
 
-          {canSeal && (
-            <button
-              onClick={handleSeal}
-              disabled={actionLoading}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 font-bold text-xs cursor-pointer disabled:opacity-50"
-            >
-              <LockKeyhole className="w-3.5 h-3.5" />
-              <span>Seal Document</span>
-            </button>
-          )}
+          {/* Lifecycle State Advancement Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* 1. Submit for Review */}
+            {canSubmit ? (
+              <button
+                onClick={handleSubmitForReview}
+                disabled={actionLoading}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 font-bold text-xs cursor-pointer shadow-md transition-all disabled:opacity-50"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Submit for Review</span>
+              </button>
+            ) : doc.currentStatus === 'DRAFT' ? (
+              <div className="group relative inline-block" tabIndex={0} aria-describedby="submit-help">
+                <button
+                  disabled
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-950/60 text-slate-500 border border-slate-800 font-bold text-xs cursor-not-allowed opacity-60"
+                  title="Submission requires Investigating Officer or Admin role."
+                >
+                  <Send className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Submit for Review</span>
+                </button>
+                <span id="submit-help" className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block group-focus:block px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[10px] text-amber-300/90 whitespace-nowrap shadow-xl z-20 font-mono">
+                  Available when the document is in DRAFT.
+                </span>
+              </div>
+            ) : null}
+
+            {/* 2. Approve Version */}
+            {canApprove ? (
+              <button
+                onClick={() => setIsApproveOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 font-bold text-xs cursor-pointer shadow-md transition-all"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Approve Version</span>
+              </button>
+            ) : doc.currentStatus === 'UNDER_REVIEW' ? (
+              <div className="group relative inline-block">
+                <button
+                  disabled
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-950/60 text-slate-500 border border-slate-800 font-bold text-xs cursor-not-allowed opacity-60"
+                  title="Supervisor approval is required."
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Approve Version</span>
+                </button>
+                <span className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block group-focus:block px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[10px] text-amber-300/90 whitespace-nowrap shadow-xl z-20 font-mono">
+                  Supervisor approval is required.
+                </span>
+              </div>
+            ) : doc.currentStatus === 'DRAFT' ? (
+              <div className="group relative inline-block">
+                <button
+                  disabled
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-950/40 text-slate-600 border border-slate-800/80 font-semibold text-xs cursor-not-allowed opacity-50"
+                  title="Document must be submitted for review first."
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-slate-700" />
+                  <span>Approve Version</span>
+                </button>
+                <span className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block group-focus:block px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[10px] text-slate-400 whitespace-nowrap shadow-xl z-20 font-mono">
+                  Document must be submitted for review first.
+                </span>
+              </div>
+            ) : null}
+
+            {/* 3. Seal Document */}
+            {canSeal ? (
+              <button
+                onClick={handleSeal}
+                disabled={actionLoading}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 font-bold text-xs cursor-pointer shadow-md transition-all disabled:opacity-50"
+              >
+                <LockKeyhole className="w-3.5 h-3.5" />
+                <span>Seal Document</span>
+              </button>
+            ) : doc.currentStatus === 'APPROVED' ? (
+              <div className="group relative inline-block">
+                <button
+                  disabled
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-950/60 text-slate-500 border border-slate-800 font-bold text-xs cursor-not-allowed opacity-60"
+                  title="Supervisor approval is required to seal evidence."
+                >
+                  <LockKeyhole className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Seal Document</span>
+                </button>
+                <span className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block group-focus:block px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[10px] text-amber-300/90 whitespace-nowrap shadow-xl z-20 font-mono">
+                  Supervisor or Admin role required to seal evidence.
+                </span>
+              </div>
+            ) : doc.currentStatus === 'SEALED' ? (
+              <div className="px-3.5 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-mono font-bold text-[11px] flex items-center gap-1.5">
+                <LockKeyhole className="w-3.5 h-3.5 text-indigo-400" />
+                <span>SEALED & IMMUTABLE</span>
+              </div>
+            ) : (
+              <div className="group relative inline-block">
+                <button
+                  disabled
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-950/40 text-slate-600 border border-slate-800/80 font-semibold text-xs cursor-not-allowed opacity-50"
+                  title="Available after approval. Sealed evidence is immutable."
+                >
+                  <LockKeyhole className="w-3.5 h-3.5 text-slate-700" />
+                  <span>Seal Document</span>
+                </button>
+                <span className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block group-focus:block px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[10px] text-slate-400 whitespace-nowrap shadow-xl z-20 font-mono">
+                  Available after approval. Sealed evidence is immutable.
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -810,12 +991,137 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
             <button
               onClick={handleVerifyBlockchainProof}
               disabled={verifyingBlockchain}
-              className="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-500/20 disabled:opacity-50"
+              className="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-500/20 disabled:opacity-50 transition-all"
             >
               <ShieldCheck className="w-4 h-4" />
               <span>{verifyingBlockchain ? 'Verifying Proof...' : 'Verify Cryptographic Provenance'}</span>
             </button>
           </div>
+
+          {/* PLAIN-ENGLISH EVIDENCE INTEGRITY & ADMISSABILITY SUMMARY CARD */}
+          {(() => {
+            const getSummaryDetails = () => {
+              if (integrityState === 'COMPROMISED' || blockchainVerification?.result === 'COMPROMISED') {
+                return {
+                  title: 'Integrity check failed',
+                  subtitle: 'The current evidence bytes do not match the authoritative SHA-256 record. Access has been blocked.',
+                  badgeText: 'TAMPER DETECTED',
+                  badgeStyle: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+                  icon: ShieldAlert,
+                  iconColor: 'text-rose-400',
+                  borderColor: 'border-rose-500/40',
+                  bgColor: 'bg-rose-950/20',
+                };
+              }
+
+              if (blockchainVerification?.result === 'CHAIN_UNAVAILABLE') {
+                return {
+                  title: 'Ledger verification unavailable',
+                  subtitle: 'The evidence integrity record is available, but the blockchain network could not currently be verified.',
+                  badgeText: 'NETWORK UNREACHABLE',
+                  badgeStyle: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                  icon: AlertTriangle,
+                  iconColor: 'text-amber-400',
+                  borderColor: 'border-amber-500/30',
+                  bgColor: 'bg-slate-950/60',
+                };
+              }
+
+              if (blockchainVerification?.result === 'INVALID') {
+                return {
+                  title: 'Verification failed',
+                  subtitle: 'The available cryptographic proof could not be validated.',
+                  badgeText: 'PROOF INVALID',
+                  badgeStyle: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+                  icon: ShieldAlert,
+                  iconColor: 'text-rose-400',
+                  borderColor: 'border-rose-500/40',
+                  bgColor: 'bg-rose-950/20',
+                };
+              }
+
+              if (blockchainVerification?.result === 'PARTIALLY_VERIFIED') {
+                return {
+                  title: 'Partially verified',
+                  subtitle: 'Current evidence integrity and historical ledger proof do not both have complete verification.',
+                  badgeText: 'PARTIAL PROOF',
+                  badgeStyle: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                  icon: AlertTriangle,
+                  iconColor: 'text-amber-400',
+                  borderColor: 'border-amber-500/30',
+                  bgColor: 'bg-amber-950/20',
+                };
+              }
+
+              if (blockchainAnchor?.status === 'CONFIRMED' || blockchainVerification?.result === 'VERIFIED') {
+                return {
+                  title: 'Cryptographically verified',
+                  subtitle: 'The downloaded evidence bytes match the authoritative SHA-256 record, and the historical blockchain proof is valid.',
+                  badgeText: 'AUTHENTICITY CONFIRMED',
+                  badgeStyle: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+                  icon: ShieldCheck,
+                  iconColor: 'text-emerald-400',
+                  borderColor: 'border-emerald-500/30',
+                  bgColor: 'bg-emerald-950/20',
+                };
+              }
+
+              if (blockchainAnchor?.status === 'PENDING' || blockchainAnchor?.status === 'SUBMITTED' || blockchainVerification?.result === 'PENDING') {
+                return {
+                  title: 'Verification pending',
+                  subtitle: 'The evidence has not yet received a completed blockchain confirmation.',
+                  badgeText: 'PENDING CONFIRMATION',
+                  badgeStyle: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                  icon: Shield,
+                  iconColor: 'text-amber-400',
+                  borderColor: 'border-amber-500/30',
+                  bgColor: 'bg-slate-950/60',
+                };
+              }
+
+              return {
+                title: 'Blockchain proof unavailable',
+                subtitle: 'The evidence has an authoritative integrity record, but no confirmed blockchain anchor is available.',
+                badgeText: 'UNANCHORED PROOF',
+                badgeStyle: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+                icon: Shield,
+                iconColor: 'text-amber-400',
+                borderColor: 'border-slate-800',
+                bgColor: 'bg-slate-950/60',
+              };
+            };
+
+            const summary = getSummaryDetails();
+            const SummaryIcon = summary.icon;
+            return (
+              <div className={`p-5 rounded-2xl ${summary.bgColor} border ${summary.borderColor} space-y-3 shadow-lg`}>
+                <div className="flex items-start justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl bg-slate-950 border border-slate-800 ${summary.iconColor} shrink-0`}>
+                      <SummaryIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-extrabold text-white tracking-tight">
+                          {summary.title}
+                        </h4>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${summary.badgeStyle}`}>
+                          {summary.badgeText}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed mt-0.5 max-w-2xl">
+                        {summary.subtitle}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 italic font-sans flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-amber-400/80 shrink-0" />
+                  <span>Technical verification supports chain-of-custody review; legal admissibility remains a matter for the appropriate authority.</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* DUAL-COLUMN COMPARISON: EVIDENCE INTEGRITY VS BLOCKCHAIN PROVENANCE */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
