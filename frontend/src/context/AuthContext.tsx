@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
-import { api, refreshAccessToken } from '../services/api';
+import { api, getAccessToken, refreshAccessToken } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
@@ -19,22 +19,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchCurrentUser = async () => {
     try {
-      // 1. Try fetching profile with in-memory token
-      const currentUser = await api.me();
-      setUser(currentUser);
-    } catch (_) {
-      // 2. Access token missing or expired: try silent refresh using HTTP-only cookie
-      try {
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          const refreshedUser = await api.me();
-          setUser(refreshedUser);
-        } else {
-          setUser(null);
-        }
-      } catch (refreshErr) {
+      // 1. If in-memory access token exists, fetch profile directly
+      if (getAccessToken()) {
+        const currentUser = await api.me();
+        setUser(currentUser);
+        return;
+      }
+
+      // 2. Access token missing on app startup (e.g. browser refresh): attempt silent refresh using HTTP-only cookie
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        const refreshedUser = await api.me();
+        setUser(refreshedUser);
+      } else {
         setUser(null);
       }
+    } catch (_) {
+      setUser(null);
     } finally {
       setLoading(false);
     }
