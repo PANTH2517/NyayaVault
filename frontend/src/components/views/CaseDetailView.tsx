@@ -14,6 +14,10 @@ import {
   ShieldAlert,
   Users,
   Activity,
+  Fingerprint,
+  FileCheck2,
+  KeyRound,
+  ShieldCheck,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Case, Document, DocumentClassification, DocumentStatus, User } from '../../types';
@@ -125,24 +129,24 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
   };
 
   const statusBadges: Record<DocumentStatus, { label: string; style: string; icon: any }> = {
-    DRAFT: { label: 'DRAFT', style: 'bg-slate-500/20 text-slate-300 border-slate-500/30', icon: Clock },
-    UNDER_REVIEW: { label: 'UNDER REVIEW', style: 'bg-amber-500/20 text-amber-300 border-amber-500/30', icon: Clock },
-    APPROVED: { label: 'APPROVED', style: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', icon: CheckCircle2 },
-    SEALED: { label: 'SEALED', style: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30', icon: Lock },
+    DRAFT: { label: 'DRAFT', style: 'bg-slate-500/15 text-slate-300 border-slate-500/30', icon: Clock },
+    UNDER_REVIEW: { label: 'UNDER REVIEW', style: 'bg-amber-500/15 text-amber-300 border-amber-500/30', icon: Clock },
+    APPROVED: { label: 'APPROVED', style: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', icon: CheckCircle2 },
+    SEALED: { label: 'SEALED & IMMUTABLE', style: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40', icon: Lock },
   };
 
   if (loading) {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-3 text-slate-400 text-xs font-sans">
         <Activity className="w-6 h-6 animate-spin text-amber-400" />
-        <p className="font-semibold text-slate-300">Loading Case Operational Hub...</p>
+        <p className="font-mono font-bold text-slate-300">Loading Case Operational Hub...</p>
       </div>
     );
   }
 
   if (error || !caseItem) {
     return (
-      <div className="p-6 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs space-y-3 font-sans">
+      <div className="p-6 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs space-y-3 font-sans">
         <div>{error || 'Case not found or access denied by CBAC policy.'}</div>
         <button onClick={onBack} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-200 font-bold cursor-pointer">
           Back to Cases List
@@ -154,32 +158,32 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
   const canUpload = user?.role === 'ADMIN' || user?.role === 'INVESTIGATING_OFFICER';
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="space-y-8 font-sans">
       {/* Top Back Navigation */}
       <button
         onClick={onBack}
-        className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-amber-400 transition-colors cursor-pointer"
+        className="inline-flex items-center gap-2 text-xs font-mono font-bold text-slate-400 hover:text-amber-400 transition-colors cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
-        <span>Back to Case Listing</span>
+        <span>BACK TO INVESTIGATIONS LIST</span>
       </button>
 
       {/* Case Operational Hub Hero Header */}
-      <MotionReveal delayMs={0} className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-5 shadow-2xl backdrop-blur-xl">
+      <MotionReveal delayMs={0} className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 space-y-6 shadow-2xl backdrop-blur-2xl">
         <div className="flex items-start justify-between flex-wrap gap-4">
-          <div className="space-y-2 max-w-3xl">
+          <div className="space-y-3 max-w-3xl">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
-                {caseItem.caseNumber}
+              <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-xl border border-amber-500/20">
+                CASE {caseItem.caseNumber}
               </span>
               <MotionStatus status={caseItem.status} />
-              <span className="text-[11px] font-mono text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+              <span className="text-[11px] font-mono text-slate-400 bg-slate-950 px-3 py-1 rounded-lg border border-slate-800">
                 Created: {new Date(caseItem.createdAt).toLocaleDateString()}
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">{caseItem.title}</h1>
-            <p className="text-xs text-slate-300 leading-relaxed">
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">{caseItem.title}</h1>
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
               {caseItem.description || 'No detailed investigation summary provided.'}
             </p>
           </div>
@@ -188,7 +192,7 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
             {user?.role === 'ADMIN' && (
               <button
                 onClick={() => setIsAssignOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800 text-slate-200 text-xs font-bold border border-slate-800 transition-all cursor-pointer"
               >
                 <UserPlus className="w-4 h-4 text-sky-400" />
                 <span>Assign Personnel</span>
@@ -198,7 +202,7 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
             {canUpload && (
               <button
                 onClick={() => setIsUploadOpen(true)}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
               >
                 <Upload className="w-4 h-4" />
                 <span>Upload Evidence (v1)</span>
@@ -208,53 +212,61 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
         </div>
 
         {/* Assigned Personnel */}
-        <div className="pt-4 border-t border-slate-800/80 space-y-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+        <div className="pt-5 border-t border-slate-800/80 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-300">
             <Users className="w-4 h-4 text-amber-400" />
-            <span>Assigned Case Personnel ({caseItem.assignments ? caseItem.assignments.length : 0})</span>
+            <span>ASSIGNED CASE PERSONNEL ({caseItem.assignments ? caseItem.assignments.length : 0})</span>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-wrap">
             {caseItem.assignments && caseItem.assignments.length > 0 ? (
               caseItem.assignments.map((asgn) => (
                 <div
                   key={asgn.id}
-                  className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 flex items-center gap-2"
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-300 flex items-center gap-2.5"
                 >
-                  <span className="font-semibold text-white">{asgn.user?.fullName || asgn.userId}</span>
-                  <span className="text-[10px] font-mono text-amber-400/90 uppercase px-2 py-0.5 rounded bg-slate-900 border border-slate-800">
+                  <span className="font-bold text-white">{asgn.user?.fullName || asgn.userId}</span>
+                  <span className="text-[10px] font-mono text-amber-400 font-bold uppercase px-2 py-0.5 rounded bg-slate-900 border border-slate-800">
                     {asgn.roleInCase || 'OFFICER'}
                   </span>
                 </div>
               ))
             ) : (
-              <span className="text-xs text-slate-500 italic">No specific personnel assigned to this case.</span>
+              <span className="text-xs text-slate-500 italic font-mono">No personnel specifically assigned to this case.</span>
             )}
           </div>
         </div>
       </MotionReveal>
 
-      {/* Case Evidence Documents Grid */}
-      <MotionReveal delayMs={50} className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-extrabold text-white tracking-tight flex items-center gap-2">
-            <FileText className="w-5 h-5 text-amber-400" />
-            Case Evidence Files ({documents.length})
-          </h2>
-          <span className="text-xs font-mono text-slate-400">
+      {/* Case Evidence Collection Grid */}
+      <MotionReveal delayMs={50} className="space-y-5">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <div className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-widest">
+              PROTECTED DIGITAL ARTIFACTS
+            </div>
+            <h2 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2.5 mt-0.5">
+              <FileText className="w-5 h-5 text-amber-400" />
+              Evidence Collection ({documents.length})
+            </h2>
+          </div>
+          <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-xl font-bold flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4" />
             SHA-256 Byte Verified
           </span>
         </div>
 
         {documents.length === 0 ? (
-          <div className="p-12 text-center text-xs text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800 space-y-3">
+          <div className="p-12 text-center text-xs text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/80 space-y-3 font-sans">
             <FileUp className="w-10 h-10 text-slate-600 mx-auto" />
-            <p className="font-semibold text-slate-300">No Evidence Documents Uploaded</p>
-            <p className="text-slate-500">Upload evidence files to establish SHA-256 byte fingerprints and immutable version records.</p>
+            <p className="font-extrabold text-sm text-slate-300">NO EVIDENCE DOCUMENTS UPLOADED</p>
+            <p className="text-slate-400 max-w-md mx-auto leading-relaxed">
+              Upload evidence files to establish SHA-256 byte fingerprints, AES-256 envelopes, and immutable ledger records.
+            </p>
             {canUpload && (
               <button
                 onClick={() => setIsUploadOpen(true)}
-                className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs cursor-pointer inline-flex items-center gap-1.5 shadow-lg shadow-amber-500/20 mt-1"
+                className="px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-extrabold text-xs cursor-pointer inline-flex items-center gap-2 shadow-lg shadow-amber-500/20 mt-1"
               >
                 <Upload className="w-4 h-4" />
                 <span>Upload First Evidence File</span>
@@ -262,7 +274,7 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {documents.map((doc) => {
               const currentVer = doc.versions && doc.versions[0];
               const st = statusBadges[doc.currentStatus];
@@ -272,12 +284,18 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
                 <div
                   key={doc.id}
                   onClick={() => onSelectDocument(doc.id)}
-                  className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 transition-all duration-300 cursor-pointer space-y-4 group shadow-xl backdrop-blur-xl"
+                  className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 hover:border-amber-500/40 transition-all duration-300 cursor-pointer space-y-4 group shadow-xl backdrop-blur-2xl relative"
                 >
+                  {/* Forensic Header */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
-                      <div className="text-[10px] uppercase font-mono font-bold text-amber-400 tracking-wider">
-                        {doc.documentType} &bull; {doc.classification}
+                      <div className="text-[10px] uppercase font-mono font-bold text-amber-400 tracking-wider flex items-center gap-2 flex-wrap">
+                        <span>{getEvidenceTypeLabel(doc.documentType)} &bull; {doc.classification}</span>
+                        {doc.exhibitNumber && (
+                          <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            Ex #{doc.exhibitNumber}
+                          </span>
+                        )}
                       </div>
                       <h3 className="text-base font-extrabold text-white group-hover:text-amber-300 transition-colors">
                         {doc.title}
@@ -285,31 +303,49 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
                     </div>
 
                     <span
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 shrink-0 ${st.style}`}
+                      className={`text-[10px] font-mono font-bold px-3 py-1 rounded-full border flex items-center gap-1.5 shrink-0 ${st.style}`}
                     >
                       <StatusIcon className="w-3.5 h-3.5" />
                       {st.label}
                     </span>
                   </div>
 
+                  {/* Forensic Technical Metadata Box */}
                   {currentVer && (
-                    <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 font-mono text-[11px] text-slate-400 space-y-1.5">
+                    <div className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800/80 font-mono text-[11px] text-slate-400 space-y-2">
                       <div className="flex items-center justify-between text-slate-300 font-bold">
-                        <span>Version {currentVer.versionNumber}</span>
+                        <span>VERSION 0{currentVer.versionNumber}</span>
                         <span className="text-slate-400">
                           {(Number(currentVer.fileSizeBytes) / 1024).toFixed(1)} KB
                         </span>
                       </div>
-                      <div className="text-[10px]">
-                        Status: <span className="text-emerald-400 font-bold">Integrity Verified</span>
+
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span>ENCRYPTION: <strong className="text-slate-300">AES-256-GCM</strong></span>
+                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                          <Fingerprint className="w-3 h-3" />
+                          VERIFIED
+                        </span>
                       </div>
                     </div>
                   )}
 
-                  <div className="pt-2 flex items-center justify-between text-xs text-slate-500 border-t border-slate-800/80">
-                    <span>Uploaded: {new Date(doc.createdAt).toLocaleDateString()}</span>
-                    <span className="text-amber-400 font-bold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                      <span>Open Evidence</span>
+                  {/* Artifact Tags */}
+                  {doc.tags && doc.tags.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {doc.tags.map((t, idx) => (
+                        <span key={idx} className="text-[10px] font-mono text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                          #{t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Card Footer Action */}
+                  <div className="pt-3 flex items-center justify-between text-xs text-slate-400 border-t border-slate-800/80">
+                    <span className="font-mono text-[11px]">Uploaded: {new Date(doc.createdAt).toLocaleDateString()}</span>
+                    <span className="text-amber-400 font-extrabold text-xs flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                      <span>OPEN ARTIFACT</span>
                       <ArrowRight className="w-4 h-4" />
                     </span>
                   </div>

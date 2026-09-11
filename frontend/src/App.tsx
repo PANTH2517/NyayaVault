@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { Sidebar, ViewTab } from './components/Sidebar';
@@ -26,6 +26,7 @@ const MainLayout: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<ViewTab>('dashboard');
   const [isResetRoute, setIsResetRoute] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Sub-view drilldown state
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
@@ -63,11 +64,11 @@ const MainLayout: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center font-sans text-xs relative">
+      <div className="min-h-screen bg-[#060911] text-slate-100 flex items-center justify-center font-sans text-xs relative">
         <CinematicBackground />
-        <div className="flex items-center gap-3 z-10 p-4 rounded-xl bg-slate-900/90 border border-slate-800 backdrop-blur-md shadow-2xl">
+        <div className="flex items-center gap-3 z-10 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl shadow-2xl">
           <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-          <span>Verifying Security Session Credentials...</span>
+          <span className="font-mono text-slate-200">Verifying Security Session Credentials...</span>
         </div>
       </div>
     );
@@ -81,15 +82,18 @@ const MainLayout: React.FC = () => {
     setCurrentTab(tab);
     setSelectedCaseId(null);
     setSelectedDocId(null);
+    setIsMobileMenuOpen(false);
   };
 
   const handleSelectCase = (caseId: string) => {
     setSelectedCaseId(caseId);
     setSelectedDocId(null);
+    setIsMobileMenuOpen(false);
   };
 
   const handleSelectDocument = (docId: string) => {
     setSelectedDocId(docId);
+    setIsMobileMenuOpen(false);
   };
 
   const renderContent = () => {
@@ -160,16 +164,49 @@ const MainLayout: React.FC = () => {
     : currentTab;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative">
+    <div className="min-h-screen bg-[#060911] text-slate-100 flex flex-col font-sans relative">
       <CinematicBackground />
 
       <Header
         onSelectCase={handleSelectCase}
         onSelectDocument={handleSelectDocument}
+        isMobileMenuOpen={isMobileMenuOpen}
+        onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
 
-      <div className="flex-1 flex overflow-hidden z-10">
-        <Sidebar currentTab={currentTab} onTabChange={handleTabChange} />
+      <div className="flex-1 flex overflow-hidden z-10 relative">
+        {/* Desktop Permanent Sidebar */}
+        <div className="hidden md:block w-64 shrink-0">
+          <Sidebar currentTab={currentTab} onTabChange={handleTabChange} />
+        </div>
+
+        {/* Mobile Slide-Over Navigation Overlay */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <div className="md:hidden fixed inset-0 z-50 flex">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="fixed inset-0 bg-slate-950/80 backdrop-blur-md"
+              />
+              <motion.div
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="relative w-72 max-w-[80vw] h-full z-10"
+              >
+                <Sidebar
+                  currentTab={currentTab}
+                  onTabChange={handleTabChange}
+                  onCloseMobile={() => setIsMobileMenuOpen(false)}
+                />
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin">
           <div className="max-w-7xl mx-auto">

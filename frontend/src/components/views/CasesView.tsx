@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   Briefcase,
   Plus,
@@ -12,6 +13,9 @@ import {
   CheckCircle2,
   Activity,
   Users,
+  Clock,
+  ShieldAlert,
+  FileCheck2,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Case } from '../../types';
@@ -43,7 +47,7 @@ export const CasesView: React.FC<CasesViewProps> = ({ onSelectCase }) => {
       const data = await api.getCases();
       setCases(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch cases');
+      setError(err.message || 'Failed to fetch authorized cases');
     } finally {
       setLoading(false);
     }
@@ -65,26 +69,26 @@ export const CasesView: React.FC<CasesViewProps> = ({ onSelectCase }) => {
   });
 
   return (
-    <div className="space-y-6 font-sans">
-      {/* 1. CASE HEADER */}
-      <MotionReveal delayMs={0} className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-4 shadow-2xl backdrop-blur-xl">
+    <div className="space-y-8 font-sans">
+      {/* 1. INVESTIGATIONS PAGE HEADER */}
+      <MotionReveal delayMs={0} className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 space-y-5 shadow-2xl backdrop-blur-2xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="space-y-1.5 max-w-2xl">
+          <div className="space-y-2 max-w-3xl">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <span className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-mono font-bold uppercase tracking-widest flex items-center gap-1.5">
                 <Briefcase className="w-3.5 h-3.5" />
-                Case Operations Hub
+                DIGITAL INVESTIGATION WORKSPACE
               </span>
-              <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-                {cases.length} Accessible Investigation Case(s)
+              <span className="text-[10px] font-mono font-bold text-slate-300 bg-slate-950 px-3 py-1 rounded-lg border border-slate-800">
+                {cases.length} AUTHORIZED CASE(S)
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              Investigation Cases & Records
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+              INVESTIGATIONS
             </h1>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Case-scoped evidence boundaries protected by NestJS backend authorization guards.
+            <p className="text-xs sm:text-sm text-slate-400 leading-relaxed font-normal">
+              Secure case boundaries protected by cryptographic role and attribute access policies. Explore assigned investigation files, evidence logs, and personnel assignments.
             </p>
           </div>
 
@@ -92,7 +96,7 @@ export const CasesView: React.FC<CasesViewProps> = ({ onSelectCase }) => {
             {user?.role === 'ADMIN' && (
               <button
                 onClick={() => setIsCreateOpen(true)}
-                className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all duration-micro ease-cinematic active:scale-[0.97] cursor-pointer"
+                className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 transition-all active:scale-[0.98] cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Create New Case</span>
@@ -103,8 +107,8 @@ export const CasesView: React.FC<CasesViewProps> = ({ onSelectCase }) => {
       </MotionReveal>
 
       {/* 2. FILTERS & SEARCH TOOLBAR */}
-      <MotionReveal delayMs={50} className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/90 border border-slate-800">
-        <div className="flex items-center gap-3 flex-1 min-w-[240px]">
+      <MotionReveal delayMs={50} className="flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5 rounded-3xl bg-slate-900/80 border border-slate-800/80 backdrop-blur-2xl">
+        <div className="flex items-center gap-3 flex-1 min-w-[260px]">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -112,7 +116,7 @@ export const CasesView: React.FC<CasesViewProps> = ({ onSelectCase }) => {
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               placeholder="Search by case number, title, or summary..."
-              className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono transition-colors"
             />
           </div>
         </div>
@@ -122,9 +126,9 @@ export const CasesView: React.FC<CasesViewProps> = ({ onSelectCase }) => {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-amber-500 font-mono"
+            className="px-4 py-2.5 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-300 focus:outline-none focus:border-amber-500 font-mono"
           >
-            <option value="ALL">All Case Statuses ({cases.length})</option>
+            <option value="ALL">All Statuses ({cases.length})</option>
             <option value="OPEN">OPEN Only</option>
             <option value="UNDER_INVESTIGATION">UNDER INVESTIGATION</option>
             <option value="CLOSED">CLOSED Only</option>
@@ -135,26 +139,26 @@ export const CasesView: React.FC<CasesViewProps> = ({ onSelectCase }) => {
 
       {/* 3. CASE COLLECTION GRID */}
       {loading ? (
-        <div className="min-h-[40vh] flex flex-col items-center justify-center space-y-3 text-slate-400 text-xs">
+        <div className="min-h-[40vh] flex flex-col items-center justify-center space-y-3 text-slate-400 text-xs font-sans">
           <Activity className="w-6 h-6 animate-spin text-amber-400" />
-          <p className="font-semibold text-slate-300">Loading Investigation Cases...</p>
+          <p className="font-mono font-bold text-slate-300">Loading Authorized Case Workspaces...</p>
         </div>
       ) : error ? (
-        <MotionReveal className="p-5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+        <MotionReveal className="p-6 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-sans">
           {error}
         </MotionReveal>
       ) : filteredCases.length === 0 ? (
-        <div className="p-12 text-center text-xs text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800 space-y-2">
-          <Briefcase className="w-8 h-8 text-slate-600 mx-auto" />
-          <p className="font-semibold text-slate-300">No Cases Found</p>
-          <p className="text-slate-500">
+        <div className="p-12 text-center text-xs text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/80 space-y-3 font-sans">
+          <Briefcase className="w-10 h-10 text-slate-600 mx-auto" />
+          <p className="font-extrabold text-sm text-slate-300">NO CASES FOUND</p>
+          <p className="text-slate-400 max-w-md mx-auto leading-relaxed">
             {user?.role === 'ADMIN'
-              ? 'No cases match the search criteria.'
-              : 'No assigned cases found under your authorized case assignments.'}
+              ? 'No active cases match your search filter criteria. Adjust search parameters or create a new case.'
+              : 'No assigned cases match your current filter criteria under your authorized scope.'}
           </p>
         </div>
       ) : (
-        <MotionStagger staggerMs={50} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <MotionStagger staggerMs={50} className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filteredCases.map((c) => {
             const isAssigned = c.assignments && c.assignments.some((a) => a.userId === user?.id);
 
@@ -162,47 +166,47 @@ export const CasesView: React.FC<CasesViewProps> = ({ onSelectCase }) => {
               <MotionCard
                 key={c.id}
                 onClick={() => onSelectCase(c.id)}
-                className="p-6 space-y-4 group cursor-pointer"
+                className="p-6 sm:p-7 space-y-5 group cursor-pointer rounded-3xl bg-slate-900/80 border border-slate-800/80 hover:border-amber-500/40 transition-all duration-300 shadow-xl backdrop-blur-2xl"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
+                      <span className="text-[11px] font-mono font-bold text-amber-400 tracking-wider bg-amber-500/10 px-3 py-1 rounded-xl border border-amber-500/20">
                         {c.caseNumber}
                       </span>
 
                       {/* Access Scope Indicator */}
                       {user?.role === 'ADMIN' ? (
-                        <span className="text-[10px] font-bold text-rose-300 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 font-mono">
-                          ADMIN ACCESS
+                        <span className="text-[10px] font-mono font-bold text-rose-300 bg-rose-500/15 px-2.5 py-0.5 rounded-lg border border-rose-500/30">
+                          ADMIN SCOPE
                         </span>
                       ) : isAssigned ? (
-                        <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-mono">
-                          AUTHORIZED ASSIGNED
+                        <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-500/15 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
+                          ASSIGNED OFFICER
                         </span>
                       ) : null}
                     </div>
 
-                    <h3 className="text-base font-extrabold text-white group-hover:text-amber-300 transition-colors">
+                    <h2 className="text-lg font-extrabold text-white group-hover:text-amber-300 transition-colors">
                       {c.title}
-                    </h3>
+                    </h2>
                   </div>
 
                   <MotionStatus status={c.status} />
                 </div>
 
-                <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
-                  {c.description || 'No detailed description provided for this case.'}
+                <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed font-normal">
+                  {c.description || 'No detailed investigation summary provided.'}
                 </p>
 
-                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-                  <span className="flex items-center gap-1.5 font-mono text-[11px]">
-                    <Users className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Assigned Personnel: <strong className="text-slate-200">{c.assignments ? c.assignments.length : 0}</strong></span>
-                  </span>
+                <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                  <div className="flex items-center gap-2 font-mono text-[11px]">
+                    <Users className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Personnel: <strong className="text-slate-200">{c.assignments ? c.assignments.length : 0}</strong></span>
+                  </div>
 
-                  <span className="flex items-center gap-1 text-amber-400 font-bold text-xs group-hover:translate-x-1 transition-transform">
-                    <span>Open Case Operational Hub</span>
+                  <span className="flex items-center gap-1.5 text-amber-400 font-extrabold text-xs group-hover:translate-x-1 transition-transform">
+                    <span>OPEN WORKSPACE</span>
                     <ArrowRight className="w-4 h-4" />
                   </span>
                 </div>

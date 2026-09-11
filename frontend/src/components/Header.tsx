@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, User as UserIcon, LogOut, ShieldCheck, KeyRound, Search, Briefcase, FileText, X } from 'lucide-react';
+import { Shield, User as UserIcon, LogOut, ShieldCheck, KeyRound, Search, Briefcase, FileText, X, Menu } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { RoleName, Case, Document } from '../types';
 import { api } from '../services/api';
@@ -9,9 +9,16 @@ import { MfaSettingsModal } from './auth/MfaSettingsModal';
 interface HeaderProps {
   onSelectCase?: (caseId: string) => void;
   onSelectDocument?: (docId: string) => void;
+  isMobileMenuOpen?: boolean;
+  onToggleMobileMenu?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }) => {
+export const Header: React.FC<HeaderProps> = ({
+  onSelectCase,
+  onSelectDocument,
+  isMobileMenuOpen = false,
+  onToggleMobileMenu,
+}) => {
   const { user, logout } = useAuth();
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isMfaModalOpen, setIsMfaModalOpen] = useState(false);
@@ -30,10 +37,10 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
   const searchRef = useRef<HTMLDivElement>(null);
 
   const roleColors: Record<RoleName, string> = {
-    ADMIN: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
-    INVESTIGATING_OFFICER: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-    SUPERVISOR: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    PROSECUTOR: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
+    ADMIN: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+    INVESTIGATING_OFFICER: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    SUPERVISOR: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    PROSECUTOR: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
   };
 
   // Close search popover on outside click or Escape key
@@ -125,9 +132,20 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
   };
 
   return (
-    <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-50 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 font-sans">
-      {/* Brand & System Title */}
+    <header className="border-b border-slate-800/80 bg-[#060911]/90 backdrop-blur-2xl sticky top-0 z-40 px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 font-sans">
+      {/* Brand & System Title & Mobile Menu Toggle */}
       <div className="flex items-center gap-3">
+        {onToggleMobileMenu && (
+          <button
+            onClick={onToggleMobileMenu}
+            aria-label="Toggle mobile menu"
+            aria-expanded={isMobileMenuOpen}
+            className="md:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white cursor-pointer"
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        )}
+
         <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 shadow-lg shadow-amber-500/10">
           <Shield className="w-6 h-6" />
         </div>
@@ -135,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
           <h1 className="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
             NyayaVault
           </h1>
-          <p className="text-xs text-slate-400 font-semibold tracking-wide">
+          <p className="text-xs text-slate-400 font-medium tracking-wide hidden sm:block">
             Digital Evidence Management System
           </p>
         </div>
@@ -143,7 +161,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
 
       {/* Global Search Bar (Authorized Scoped) */}
       {user && (
-        <div ref={searchRef} className="relative flex-1 max-w-md mx-2">
+        <div ref={searchRef} className="relative flex-1 max-w-md mx-2 min-w-[200px]">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -154,7 +172,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
                 if (searchQuery.trim().length >= 2) setShowSearchPopover(true);
               }}
               placeholder="Search authorized cases & evidence files..."
-              className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono"
+              className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono transition-colors"
             />
             {searchQuery && (
               <button
@@ -168,7 +186,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
 
           {/* Search Popover Drawer */}
           {showSearchPopover && (
-            <div className="absolute left-0 right-0 top-full mt-2 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50 p-2 text-xs space-y-2">
+            <div className="absolute left-0 right-0 top-full mt-2 bg-[#090d16] border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50 p-2 text-xs space-y-2 backdrop-blur-2xl">
               {isSearching ? (
                 <div className="p-4 text-center text-slate-400 flex items-center justify-center gap-2">
                   <div className="w-3.5 h-3.5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
@@ -195,7 +213,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
                             setSearchQuery('');
                             if (onSelectCase) onSelectCase(c.id);
                           }}
-                          className="w-full text-left p-2 rounded-xl hover:bg-slate-800 transition-colors flex items-center justify-between group cursor-pointer"
+                          className="w-full text-left p-2 rounded-xl hover:bg-slate-800/60 transition-colors flex items-center justify-between group cursor-pointer"
                         >
                           <div className="space-y-0.5 truncate pr-2">
                             <div className="text-xs font-bold text-slate-100 group-hover:text-amber-300 truncate">
@@ -228,7 +246,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
                             setSearchQuery('');
                             if (onSelectDocument) onSelectDocument(d.id);
                           }}
-                          className="w-full text-left p-2 rounded-xl hover:bg-slate-800 transition-colors flex items-center justify-between group cursor-pointer"
+                          className="w-full text-left p-2 rounded-xl hover:bg-slate-800/60 transition-colors flex items-center justify-between group cursor-pointer"
                         >
                           <div className="space-y-0.5 truncate pr-2">
                             <div className="text-xs font-bold text-slate-100 group-hover:text-sky-300 truncate">
@@ -254,15 +272,15 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
 
       {/* User Profile & Actions */}
       {user && (
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
             <UserIcon className="w-4 h-4 text-slate-400" />
             <div className="text-right leading-none">
               <div className="text-xs font-bold text-slate-200">{user.fullName}</div>
-              <div className="text-[10px] text-slate-400">{user.email}</div>
+              <div className="text-[10px] text-slate-400 font-mono mt-0.5">{user.email}</div>
             </div>
             <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-md border font-mono ${
                 roleColors[user.role]
               }`}
             >
@@ -273,7 +291,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
           <button
             onClick={() => setIsMfaModalOpen(true)}
             aria-label="Multi-Factor Authentication settings"
-            className="p-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-amber-400 border border-slate-700 transition-all cursor-pointer"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-amber-500/20 text-amber-400 border border-slate-800 transition-all cursor-pointer"
             title="Multi-Factor Authentication settings"
           >
             <ShieldCheck className="w-4 h-4" />
@@ -282,7 +300,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
           <button
             onClick={() => setIsPasswordModalOpen(true)}
             aria-label="Change account password"
-            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition-all cursor-pointer"
             title="Change password"
           >
             <KeyRound className="w-4 h-4" />
@@ -291,7 +309,7 @@ export const Header: React.FC<HeaderProps> = ({ onSelectCase, onSelectDocument }
           <button
             onClick={() => logout()}
             aria-label="Logout session"
-            className="p-2 rounded-lg bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-700 transition-all cursor-pointer"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-800 transition-all cursor-pointer"
             title="Logout session"
           >
             <LogOut className="w-4 h-4" />
