@@ -80,6 +80,7 @@ export class AuditChainService {
 
       const auditEvent = await tx.auditEvent.create({
         data: {
+          sequenceNumber: nextSeqNumber,
           eventType: params.eventType,
           userId: params.userId || null,
           caseId: params.caseId || null,

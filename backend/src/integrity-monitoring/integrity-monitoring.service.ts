@@ -75,7 +75,7 @@ export class IntegrityMonitoringService implements OnModuleInit, OnModuleDestroy
    */
   public configureFromEnvironment(): void {
     const rawEnabled = process.env.INTEGRITY_MONITOR_ENABLED;
-    this.enabled = rawEnabled === 'true';
+    this.enabled = rawEnabled !== 'false';
 
     const rawInterval = parseInt(process.env.INTEGRITY_MONITOR_INTERVAL_SECONDS || '60', 10);
     this.intervalSeconds = !isNaN(rawInterval) && rawInterval > 0 ? rawInterval : 60;
