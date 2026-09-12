@@ -283,6 +283,88 @@ export class UsersService {
   }
 
   /**
+   * Delete single user account (ADMIN only)
+   */
+  async deleteUser(id: string, adminUserId: string) {
+    const targetUser = await this.findOne(id);
+
+    if (targetUser.role === 'ADMIN' && targetUser.id === adminUserId) {
+      throw new ConflictException('Super Administrator account cannot delete itself.');
+    }
+
+    // Clean up dependent records for this user
+    await this.prisma.evidenceShare.deleteMany({
+      where: { OR: [{ issuedById: id }, { targetUserId: id }, { revokedById: id }] },
+    });
+    await this.prisma.approval.deleteMany({
+      where: { OR: [{ requestedById: id }, { approvedById: id }] },
+    });
+    await this.prisma.caseAssignment.deleteMany({
+      where: { userId: id },
+    });
+    await this.prisma.userSession.deleteMany({
+      where: { userId: id },
+    });
+    await this.prisma.passwordResetToken.deleteMany({
+      where: { userId: id },
+    });
+    await this.prisma.mfaRecoveryCode.deleteMany({
+      where: { userId: id },
+    });
+
+    await this.prisma.user.delete({
+      where: { id },
+    });
+
+    await this.auditChainService.recordEvent({
+      eventType: AuditEventType.CASE_ACCESS_REVOKED,
+      userId: adminUserId,
+      action: `Deleted user account ${targetUser.fullName} (${targetUser.email})`,
+    });
+
+    return { success: true, message: `User ${targetUser.email} deleted successfully.` };
+  }
+
+  /**
+   * Purge all database data except Admin user (ADMIN only)
+   */
+  async purgeAllData(adminUserId: string) {
+    await this.prisma.evidenceShare.deleteMany({});
+    await this.prisma.securityIncident.deleteMany({});
+    await this.prisma.auditEvent.deleteMany({});
+    await this.prisma.approval.deleteMany({});
+    await this.prisma.documentVersion.deleteMany({});
+    await this.prisma.document.deleteMany({});
+    await this.prisma.caseAssignment.deleteMany({});
+    await this.prisma.case.deleteMany({});
+
+    await this.prisma.userSession.deleteMany({});
+    await this.prisma.passwordResetToken.deleteMany({});
+    await this.prisma.mfaRecoveryCode.deleteMany({});
+    await this.prisma.registrationRequest.deleteMany({});
+
+    await this.prisma.blockchainApplicationAnchor.deleteMany({});
+    await this.prisma.blockchainEndorsement.deleteMany({});
+    await this.prisma.blockchainConsensusProof.deleteMany({});
+    await this.prisma.blockchainTransaction.deleteMany({});
+    await this.prisma.blockchainBlock.deleteMany({});
+    await this.prisma.blockchainChain.deleteMany({});
+
+    // Delete all users except current admin
+    const deletedUsers = await this.prisma.user.deleteMany({
+      where: {
+        id: { not: adminUserId },
+        role: { not: 'ADMIN' },
+      },
+    });
+
+    return {
+      success: true,
+      message: `System purged successfully. Removed all cases, audit logs, documents, and ${deletedUsers.count} non-admin users.`,
+    };
+  }
+
+  /**
    * Strict security invariant: exclude passwordHash and refreshTokenHash
    */
   private sanitizeUser(user: User) {
@@ -290,3 +372,4 @@ export class UsersService {
     return safeUser;
   }
 }
+
