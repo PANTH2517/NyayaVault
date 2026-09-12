@@ -37,42 +37,7 @@ export class BlockchainController {
    */
   @Get('status')
   async getStatus(@CurrentUser() user: UserPayload) {
-    if (user.role === RoleName.ADMIN) {
-      return this.observabilityService.getNetworkObservability();
-    }
-
-    const store = new PrismaLedgerStore({
-      prisma: this.prisma as any,
-      nodeId: 'POLICE_NODE',
-    });
-
-    const height = await store.getHeight();
-    const latest = await store.getLatestBlock();
-
-    const [totalAnchors, confirmedAnchors, pendingAnchors, failedAnchors] = await Promise.all([
-      this.prisma.blockchainApplicationAnchor.count(),
-      this.prisma.blockchainApplicationAnchor.count({ where: { status: 'CONFIRMED' } }),
-      this.prisma.blockchainApplicationAnchor.count({ where: { status: 'PENDING' } }),
-      this.prisma.blockchainApplicationAnchor.count({ where: { status: 'FAILED' } }),
-    ]);
-
-    return {
-      nodeId: 'POLICE_NODE',
-      chainId: 'nyayavault-mainnet-1',
-      currentHeight: height >= 0n ? height.toString() : '0',
-      latestBlockHash: latest?.blockHash || null,
-      lifecycleState: 'READY',
-      peerConnectivity: {
-        activeNodes: ['POLICE_NODE', 'PROSECUTION_NODE', 'COURT_NODE', 'ADMIN_NODE'],
-        status: 'CONNECTED',
-      },
-      anchorSummary: {
-        total: totalAnchors,
-        confirmed: confirmedAnchors,
-        pending: pendingAnchors,
-        failed: failedAnchors,
-      },
-    };
+    return this.observabilityService.getNetworkObservability();
   }
 
   /**

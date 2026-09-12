@@ -398,7 +398,7 @@ export const BlockchainObservabilityView: React.FC = () => {
           </div>
         ) : (
           <div className="p-4 text-center text-slate-500 text-xs italic bg-slate-950/60 rounded-xl border border-slate-800">
-            Anchor target 1be0d312-632f-4873-8f56-103c2a9f4c76 not found.
+            No active production application anchor confirmed on ledger.
           </div>
         )}
       </MotionReveal>
