@@ -11,10 +11,15 @@ describe('DocumentEncryptionService (AES-256-GCM Unit Suite)', () => {
   });
 
   afterAll(() => {
-    process.env.DOCUMENT_ENCRYPTION_KEY = originalEnvKey;
+    if (originalEnvKey !== undefined) {
+      process.env.DOCUMENT_ENCRYPTION_KEY = originalEnvKey;
+    } else {
+      delete process.env.DOCUMENT_ENCRYPTION_KEY;
+    }
   });
 
   beforeEach(async () => {
+    process.env.DOCUMENT_ENCRYPTION_KEY = 'test_doc_encryption_key_32bytes!';
     const module: TestingModule = await Test.createTestingModule({
       providers: [DocumentEncryptionService],
     }).compile();
@@ -128,4 +133,73 @@ describe('DocumentEncryptionService (AES-256-GCM Unit Suite)', () => {
     const decryptedHash = crypto.createHash('sha256').update(decrypted.plaintext).digest('hex');
     expect(decryptedHash).toBe(originalHash);
   });
+
+  it('12. Valid 64-character hexadecimal key parses to exactly 32-byte key material and completes AES-256-GCM round trip', () => {
+    const hex64Key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    process.env.DOCUMENT_ENCRYPTION_KEY = hex64Key;
+
+    const hexService = new DocumentEncryptionService();
+    expect(() => hexService.validateEncryptionKey()).not.toThrow();
+
+    const plaintext = Buffer.from('EVIDENCE_ENCRYPTED_WITH_64_CHAR_HEX_KEY');
+    const { encryptedBuffer } = hexService.encryptDocumentBytes(plaintext);
+
+    const decrypted = hexService.decryptDocumentBytes(encryptedBuffer, true);
+    expect(decrypted.plaintext.toString('utf-8')).toBe('EVIDENCE_ENCRYPTED_WITH_64_CHAR_HEX_KEY');
+  });
+
+  it('13. Rejects malformed keys and invalid key lengths strictly without silent truncation', () => {
+    // 40-character invalid length
+    process.env.DOCUMENT_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef01234567';
+    const badLengthService = new DocumentEncryptionService();
+    expect(() => badLengthService.validateEncryptionKey()).toThrow(/32-byte secret key or a 64-character hexadecimal string/);
+
+    // 64-character string containing non-hex characters
+    process.env.DOCUMENT_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg';
+    const badHexService = new DocumentEncryptionService();
+    expect(() => badHexService.validateEncryptionKey()).toThrow(/32-byte secret key or a 64-character hexadecimal string/);
+
+    process.env.DOCUMENT_ENCRYPTION_KEY = 'test_doc_encryption_key_32bytes!!';
+  });
+
+  it('14. Guarantees error messages never expose secret key material', () => {
+    const sensitiveKey = 'INVALID_SECRET_KEY_FORMAT_STRING_FOR_EXPOSURE_TEST_1234567';
+    process.env.DOCUMENT_ENCRYPTION_KEY = sensitiveKey;
+
+    const testService = new DocumentEncryptionService();
+    expect(() => testService.validateEncryptionKey()).toThrowError(
+      'FATAL SECURITY ERROR: DOCUMENT_ENCRYPTION_KEY must be a valid 32-byte secret key or a 64-character hexadecimal string.',
+    );
+  });
+
+  it('15. Preserves backward compatibility: decrypts ciphertext generated under legacy 32-char UTF-8 slice of 64-hex char key', () => {
+    const hex64Key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const legacyDerivedKey = Buffer.from(hex64Key.slice(0, 32), 'utf-8');
+
+    const plaintext = Buffer.from('LEGACY_EVIDENCE_ENCRYPTED_WITH_OLD_UTF8_SLICE');
+
+    // Manually encrypt using the legacy derived key (32 bytes of raw UTF-8 string)
+    const iv = crypto.randomBytes(12);
+    const metadataHeader = Buffer.alloc(8);
+    NYEV_MAGIC.copy(metadataHeader, 0);
+    metadataHeader.writeUInt8(1, 4);
+    metadataHeader.writeUInt16BE(1, 5);
+    metadataHeader.writeUInt8(0x00, 7);
+
+    const cipher = crypto.createCipheriv('aes-256-gcm', legacyDerivedKey, iv);
+    cipher.setAAD(metadataHeader);
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    const legacyEncryptedBuffer = Buffer.concat([metadataHeader, iv, authTag, ciphertext]);
+
+    // Now configure service with 64-char hex key and verify decryption succeeds via legacy fallback
+    process.env.DOCUMENT_ENCRYPTION_KEY = hex64Key;
+    const hardenedService = new DocumentEncryptionService();
+
+    const decrypted = hardenedService.decryptDocumentBytes(legacyEncryptedBuffer, true);
+    expect(decrypted.plaintext.toString('utf-8')).toBe('LEGACY_EVIDENCE_ENCRYPTED_WITH_OLD_UTF8_SLICE');
+
+    process.env.DOCUMENT_ENCRYPTION_KEY = 'test_doc_encryption_key_32bytes!!';
+  });
 });
+

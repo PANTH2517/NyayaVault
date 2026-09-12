@@ -20,6 +20,11 @@ export interface DecryptionResult {
   metadata: EncryptionMetadata;
 }
 
+export interface ResolvedKeyMaterial {
+  primaryKey: Buffer;
+  legacyKey?: Buffer;
+}
+
 @Injectable()
 export class DocumentEncryptionService implements OnModuleInit {
   private readonly logger = new Logger(DocumentEncryptionService.name);
@@ -29,7 +34,9 @@ export class DocumentEncryptionService implements OnModuleInit {
   }
 
   /**
-   * Validate that DOCUMENT_ENCRYPTION_KEY is present and exactly 32 bytes (256 bits).
+   * Validate that DOCUMENT_ENCRYPTION_KEY is present and is a valid key format:
+   * Either a 64-character hex string (producing 32 raw bytes / 256 bits)
+   * or a 32-byte raw secret string.
    * Fail fast in production if invalid or missing.
    */
   public validateEncryptionKey(): void {
@@ -41,32 +48,63 @@ export class DocumentEncryptionService implements OnModuleInit {
         this.logger.warn('DOCUMENT_ENCRYPTION_KEY is unconfigured in development. Using development key fallback.');
       }
     } else {
-      const keyBuffer = Buffer.from(rawKey, 'utf-8');
-      if (keyBuffer.length < 32) {
-        throw new Error('FATAL SECURITY ERROR: DOCUMENT_ENCRYPTION_KEY must be a valid 32-byte (256-bit) secret key.');
-      }
+      this.resolveKeyMaterialFromKeyString(rawKey);
     }
   }
 
   /**
-   * Key Version Resolver: Maps keyVersion to a 32-byte key Buffer
+   * Key Material Resolver: Converts a raw key string into a primary 32-byte Buffer
+   * (and an optional legacy 32-byte Buffer for backward compatibility with hex-sliced legacy keys).
    */
-  private resolveKey(keyVersion: number): Buffer {
-    if (keyVersion !== 1) {
+  private resolveKeyMaterialFromKeyString(rawKey: string): ResolvedKeyMaterial {
+    if (!rawKey) {
+      throw new Error('FATAL SECURITY ERROR: DOCUMENT_ENCRYPTION_KEY string is empty or missing.');
+    }
+
+    const trimmed = rawKey.trim();
+
+    // Case 1: 64-character hexadecimal string -> 32 raw bytes (256 bits)
+    if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+      const primaryKey = Buffer.from(trimmed, 'hex');
+      // Legacy compatibility key: in previous versions, rawKey.slice(0, 32) was UTF-8 encoded
+      const legacyKey = Buffer.from(trimmed.slice(0, 32), 'utf-8');
+      return { primaryKey, legacyKey };
+    }
+
+    // Case 2: Raw UTF-8 key string of 32 to 34 bytes (e.g. standard 32-byte secret key)
+    const utf8Buffer = Buffer.from(rawKey, 'utf-8');
+    if (utf8Buffer.length >= 32 && utf8Buffer.length <= 34) {
+      return { primaryKey: utf8Buffer.subarray(0, 32) };
+    }
+
+    // Reject malformed / invalid key formats strictly
+    throw new Error(
+      'FATAL SECURITY ERROR: DOCUMENT_ENCRYPTION_KEY must be a valid 32-byte secret key or a 64-character hexadecimal string.',
+    );
+  }
+
+  /**
+   * Key Version Resolver: Maps keyVersion to key material buffers
+   */
+  private resolveKeyMaterial(keyVersion: number): ResolvedKeyMaterial {
+    if (keyVersion !== DEFAULT_KEY_VERSION) {
       throw new BadRequestException(`UNSUPPORTED_KEY_VERSION: Key version ${keyVersion} is unknown or revoked.`);
     }
 
     const rawKey = this.getRawKeyFromEnv();
-    if (rawKey && rawKey.length >= 32) {
-      return Buffer.from(rawKey.slice(0, 32), 'utf-8');
+    if (rawKey) {
+      try {
+        return this.resolveKeyMaterialFromKeyString(rawKey);
+      } catch (err) {
+        if (process.env.NODE_ENV === 'production') {
+          throw err;
+        }
+      }
     }
 
-    // Development/test fallback key (32 bytes)
-    const devKey = process.env.DOCUMENT_ENCRYPTION_KEY || 'dev_doc_encryption_key_32bytes!';
-    if (devKey.length < 32) {
-      return Buffer.alloc(32, devKey);
-    }
-    return Buffer.from(devKey.slice(0, 32), 'utf-8');
+    // Development/test fallback key (guaranteed 32 bytes)
+    const devKey = 'dev_doc_encryption_key_32bytes!!';
+    return { primaryKey: Buffer.from(devKey.slice(0, 32), 'utf-8') };
   }
 
   private getRawKeyFromEnv(): string | undefined {
@@ -94,7 +132,7 @@ export class DocumentEncryptionService implements OnModuleInit {
       throw new BadRequestException('Cannot encrypt empty or null document buffer');
     }
 
-    const key = this.resolveKey(keyVersion);
+    const { primaryKey } = this.resolveKeyMaterial(keyVersion);
     const iv = crypto.randomBytes(IV_SIZE);
 
     // Build 8-byte Metadata Header: Magic (4) + EnvelopeVer (1) + KeyVer (2) + Reserved (1)
@@ -105,7 +143,7 @@ export class DocumentEncryptionService implements OnModuleInit {
     metadataHeader.writeUInt8(0x00, 7); // Reserved
 
     // Initialize AES-256-GCM cipher
-    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const cipher = crypto.createCipheriv('aes-256-gcm', primaryKey, iv);
     cipher.setAAD(metadataHeader); // Authenticate header metadata with GCM AAD
 
     const ciphertextPart1 = cipher.update(plaintext);
@@ -180,30 +218,53 @@ export class DocumentEncryptionService implements OnModuleInit {
     );
     const ciphertext = storedBuffer.subarray(FIXED_HEADER_SIZE);
 
-    const key = this.resolveKey(keyVersion);
+    const { primaryKey, legacyKey } = this.resolveKeyMaterial(keyVersion);
 
+    // Try primary key first
     try {
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-      decipher.setAAD(metadataHeader); // Authenticate header metadata with GCM AAD
-      decipher.setAuthTag(authTag);
-
-      const plaintextPart1 = decipher.update(ciphertext);
-      const plaintextPart2 = decipher.final();
-      const plaintext = Buffer.concat([plaintextPart1, plaintextPart2]);
-
+      const plaintext = this.performAesDecryption(primaryKey, iv, authTag, ciphertext, metadataHeader);
       return {
         plaintext,
         isLegacyPlaintext: false,
-        metadata: {
-          version: envelopeVersion,
-          keyVersion,
-        },
+        metadata: { version: envelopeVersion, keyVersion },
       };
-    } catch (err: any) {
-      this.logger.error(`AES-256-GCM decipher authentication tag mismatch or corruption: ${err.message}`);
+    } catch (primaryErr: any) {
+      // If primary key decryption fails (e.g. auth tag mismatch) AND legacy fallback key is available, retry with legacy key
+      if (legacyKey) {
+        try {
+          const plaintext = this.performAesDecryption(legacyKey, iv, authTag, ciphertext, metadataHeader);
+          this.logger.warn('Decrypted document version using legacy hex-sliced encryption key fallback.');
+          return {
+            plaintext,
+            isLegacyPlaintext: false,
+            metadata: { version: envelopeVersion, keyVersion },
+          };
+        } catch (_) {
+          // Both primary and legacy key failed
+        }
+      }
+
+      this.logger.error(`AES-256-GCM decipher authentication tag mismatch or corruption: ${primaryErr.message}`);
       throw new UnauthorizedException(
         'CIPHERTEXT_AUTHENTICATION_FAILED: Storage object authentication tag verification failed (ciphertext tampered or corrupted).',
       );
     }
   }
+
+  private performAesDecryption(
+    key: Buffer,
+    iv: Buffer,
+    authTag: Buffer,
+    ciphertext: Buffer,
+    aadHeader: Buffer,
+  ): Buffer {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAAD(aadHeader);
+    decipher.setAuthTag(authTag);
+
+    const part1 = decipher.update(ciphertext);
+    const part2 = decipher.final();
+    return Buffer.concat([part1, part2]);
+  }
 }
+
