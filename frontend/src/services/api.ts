@@ -264,19 +264,6 @@ export const api = {
     });
   },
 
-  async deleteUser(userId: string) {
-    return request<{ success: boolean; message: string }>(`/admin/users/${userId}`, {
-      method: 'DELETE',
-    });
-  },
-
-  async purgeAllData() {
-    return request<{ success: boolean; message: string }>('/admin/users/purge-all-data', {
-      method: 'POST',
-    });
-  },
-
-
   // Dashboard
   async getDashboard() {
     return request<DashboardStats>('/dashboard');

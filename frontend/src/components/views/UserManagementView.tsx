@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, UserPlus, CheckCircle, XCircle, AlertCircle, RefreshCw, Clock, Check, X, ShieldCheck, Trash2, Flame } from 'lucide-react';
+import { Users, UserPlus, CheckCircle, XCircle, AlertCircle, RefreshCw, Clock, Check, X, ShieldCheck } from 'lucide-react';
 import { User, RoleName, RegistrationRequest } from '../../types';
 import { api } from '../../services/api';
 
@@ -45,39 +45,6 @@ export const UserManagementView: React.FC = () => {
     fetchData();
   }, []);
 
-  const handleDeleteUser = async (userItem: User) => {
-    if (!confirm(`Are you sure you want to PERMANENTLY DELETE user account ${userItem.fullName} (${userItem.email})? This action cannot be undone.`)) {
-      return;
-    }
-    try {
-      await api.deleteUser(userItem.id);
-      setUsers((prev) => prev.filter((u) => u.id !== userItem.id));
-      alert(`User ${userItem.fullName} deleted successfully.`);
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete user account.');
-    }
-  };
-
-  const handlePurgeAllData = async () => {
-    const confirmation = prompt(
-      'CRITICAL WARNING: This will permanently delete ALL cases, documents, audit logs, security incidents, evidence shares, and all non-admin users from the database.\n\nTo confirm total database purge, type "PURGE" below:'
-    );
-    if (confirmation !== 'PURGE') {
-      alert('Purge operation cancelled.');
-      return;
-    }
-    try {
-      setLoading(true);
-      const res = await api.purgeAllData();
-      alert(res.message || 'System purged successfully.');
-      await fetchData();
-    } catch (err: any) {
-      alert(err.message || 'Failed to execute database purge.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
@@ -95,7 +62,6 @@ export const UserManagementView: React.FC = () => {
       setCreating(false);
     }
   };
-
 
   const handleToggleStatus = async (userItem: User) => {
     const newStatus = !userItem.isActive;
@@ -174,15 +140,6 @@ export const UserManagementView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={handlePurgeAllData}
-            className="py-2.5 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg"
-            title="Permanently delete all cases, audit logs, documents, and non-admin users"
-          >
-            <Flame className="w-4 h-4 text-rose-500 animate-pulse" />
-            <span>Purge All Database Data</span>
-          </button>
-
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20"
@@ -301,22 +258,11 @@ export const UserManagementView: React.FC = () => {
                       >
                         {u.isActive ? 'Deactivate' : 'Enable Access'}
                       </button>
-                      {u.role !== 'ADMIN' && (
-                        <button
-                          onClick={() => handleDeleteUser(u)}
-                          className="px-3 py-1.5 rounded-xl font-bold text-xs border border-rose-500/40 bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 transition-colors cursor-pointer inline-flex items-center gap-1"
-                          title="Permanently delete user account"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                          <span>Delete</span>
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-
           </div>
 
           {/* Mobile Stacked Cards */}

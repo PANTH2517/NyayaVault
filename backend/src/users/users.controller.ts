@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Patch,
-  Delete,
   Param,
   Body,
   UseGuards,
@@ -33,16 +32,6 @@ export class UsersController {
   @Get()
   async findAll() {
     return this.usersService.findAll();
-  }
-
-  /**
-   * POST /api/v1/admin/users/purge-all-data
-   * Purge all cases, audit logs, documents, incidents, and non-admin users (ADMIN only)
-   */
-  @Post('purge-all-data')
-  @HttpCode(HttpStatus.OK)
-  async purgeAllData(@CurrentUser() adminUser: UserPayload) {
-    return this.usersService.purgeAllData(adminUser.userId);
   }
 
   /**
@@ -124,17 +113,4 @@ export class UsersController {
   ) {
     return this.usersService.updateUserStatus(id, dto);
   }
-
-  /**
-   * DELETE /api/v1/admin/users/:id
-   * Permanently delete user account (ADMIN only)
-   */
-  @Delete(':id')
-  async deleteUser(
-    @Param('id') id: string,
-    @CurrentUser() adminUser: UserPayload,
-  ) {
-    return this.usersService.deleteUser(id, adminUser.userId);
-  }
 }
-
