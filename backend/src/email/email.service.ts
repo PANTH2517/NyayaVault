@@ -1,4 +1,5 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import * as nodemailer from 'nodemailer';
 
 export interface SendEmailOptions {
   to: string;
@@ -12,7 +13,7 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
   /**
-   * Production-grade email delivery abstraction.
+   * Production-grade email delivery abstraction using Nodemailer.
    * Checks SMTP configuration in environment.
    */
   async sendEmail(options: SendEmailOptions): Promise<boolean> {
@@ -23,10 +24,39 @@ export class EmailService {
     const isProduction = process.env.NODE_ENV === 'production';
 
     if (smtpHost && smtpPort && smtpUser && smtpPass) {
-      // Production SMTP delivery route
-      this.logger.log(`[EmailService (PROD)] Transmitting transactional email to '${options.to}' via SMTP host '${smtpHost}'`);
-      // Real transport execution happens here when credentials are provided in production environment
-      return true;
+      const port = parseInt(smtpPort, 10);
+      const secure = port === 465;
+      const from = process.env.SMTP_FROM || 'onboarding@resend.dev';
+
+      try {
+        const transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port,
+          secure,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass,
+          },
+        });
+
+        await transporter.sendMail({
+          from,
+          to: options.to,
+          subject: options.subject,
+          html: options.html,
+          text: options.text,
+        });
+
+        this.logger.log(
+          `[EmailService (PROD)] Transmitting transactional email to '${options.to}' via SMTP host '${smtpHost}'`,
+        );
+        return true;
+      } catch (error: any) {
+        this.logger.error(
+          `Failed to transmit transactional email to '${options.to}' via SMTP host '${smtpHost}': ${error.message || 'Unknown error'}`,
+        );
+        throw new InternalServerErrorException('Failed to deliver email through SMTP transport.');
+      }
     }
 
     if (isProduction) {
