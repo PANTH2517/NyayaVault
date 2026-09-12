@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { UnauthorizedException, ForbiddenException, ExecutionContext } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { AuthService } from './auth.service';
+import { AuthService, getCookieOptions } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditChainService } from '../security/audit-chain.service';
 import { EmailService } from '../email/email.service';
@@ -526,6 +526,40 @@ describe('AuthModule Unit & Integration Suite (Step 1 Production Hardened)', () 
           password: 'Password@2026Test',
         }),
       ).rejects.toThrow('Your registration is awaiting administrator approval.');
+    });
+  });
+
+  describe('7. Refresh Cookie Options & Cross-Site Security', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv };
+    });
+
+    afterAll(() => {
+      process.env = originalEnv;
+    });
+
+    it('should default to SameSite=none, Secure=true, Path=/api/v1/auth in production for cross-site cookie support', () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.COOKIE_SAME_SITE;
+
+      const options = getCookieOptions();
+      expect(options.httpOnly).toBe(true);
+      expect(options.secure).toBe(true);
+      expect(options.sameSite).toBe('none');
+      expect(options.path).toBe('/api/v1/auth');
+    });
+
+    it('should respect COOKIE_SAME_SITE environment variable when explicitly set', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.COOKIE_SAME_SITE = 'none';
+
+      const options = getCookieOptions();
+      expect(options.httpOnly).toBe(true);
+      expect(options.secure).toBe(true);
+      expect(options.sameSite).toBe('none');
+      expect(options.path).toBe('/api/v1/auth');
     });
   });
 });

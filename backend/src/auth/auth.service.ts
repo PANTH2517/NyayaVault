@@ -25,7 +25,7 @@ export function getCookieOptions() {
   const isProduction = process.env.NODE_ENV === 'production';
   const sameSiteEnv = process.env.COOKIE_SAME_SITE;
 
-  const sameSite = (sameSiteEnv as 'lax' | 'strict' | 'none') || (isProduction ? 'strict' : 'lax');
+  const sameSite = (sameSiteEnv as 'lax' | 'strict' | 'none') || (isProduction ? 'none' : 'lax');
   const secure = isProduction || sameSite === 'none';
 
   return {
