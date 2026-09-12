@@ -178,12 +178,13 @@ export interface SearchDocumentsResponse {
   totalPages: number;
 }
 
-export type ShareStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED';
-
-export interface EvidenceShareItem {
+export interface ShareSummary {
   id: string;
   versionId: string;
   caseId: string;
+  caseNumber: string;
+  caseTitle: string;
+  evidenceTitle: string;
   issuedBy: User;
   targetUser: User;
   revokedBy?: User | null;
@@ -191,6 +192,20 @@ export interface EvidenceShareItem {
   revokedAt?: string | null;
   status: ShareStatus;
   createdAt: string;
+}
+
+// Added for frontend API compatibility
+export type ShareStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+
+// Alias for share item used in API responses
+export type EvidenceShareItem = ShareSummary;
+
+export interface PaginatedSharesResponse {
+  items: ShareSummary[];
+  page: number;
+  size: number;
+  total: number;
+  totalPages: number;
 }
 
 export interface CreateShareResult {

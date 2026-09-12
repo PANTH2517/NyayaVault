@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DocumentsService } from '../documents/documents.service';
 import { AuditChainService } from '../security/audit-chain.service';
 import { CreateShareDto } from './dto/create-share.dto';
+import { ListActiveSharesDto } from './dto/list-active-shares.dto';
 import { UserPayload } from '../auth/decorators/current-user.decorator';
 import { RoleName, ShareStatus, AuditEventType } from '@prisma/client';
 
@@ -203,13 +204,10 @@ export class SharesService {
     };
   }
 
-  /**
-   * List Shares for Evidence Version (No Raw Tokens Exposed)
-   */
-  async getSharesForVersion(versionId: string, user: UserPayload) {
+  async getSharesForVersion(versionId: string, user: UserPayload, pagination: ListActiveSharesDto) {
     const version = await this.prisma.documentVersion.findUnique({
       where: { id: versionId },
-      include: { document: true },
+      include: { document: { select: { title: true, caseId: true, case: { select: { caseNumber: true, title: true } } } } },
     });
 
     if (!version) {
@@ -218,20 +216,35 @@ export class SharesService {
 
     await this.validateCaseAccess(version.document.caseId, user.userId, user.role as RoleName);
 
+    // Pagination defaults and validation via DTO
+    const page = pagination?.page ?? 1;
+    const size = pagination?.size ?? 20;
+    const offset = (page - 1) * size;
+
+    // Total count for pagination metadata
+    const total = await this.prisma.evidenceShare.count({ where: { versionId } });
+    const totalPages = Math.ceil(total / size);
+
     const shares = await this.prisma.evidenceShare.findMany({
       where: { versionId },
+      take: size,
+      skip: offset,
       include: {
         issuedBy: { select: { id: true, email: true, fullName: true, role: true } },
         targetUser: { select: { id: true, email: true, fullName: true, role: true } },
         revokedBy: { select: { id: true, email: true, fullName: true, role: true } },
+        case: { select: { caseNumber: true, title: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    return shares.map((s) => ({
+    const items = shares.map((s) => ({
       id: s.id,
       versionId: s.versionId,
       caseId: s.caseId,
+      caseNumber: s.case?.caseNumber,
+      caseTitle: s.case?.title,
+      evidenceTitle: version.document.title,
       issuedBy: s.issuedBy,
       targetUser: s.targetUser,
       revokedBy: s.revokedBy,
@@ -240,6 +253,8 @@ export class SharesService {
       status: this.deriveEffectiveStatus(s),
       createdAt: s.createdAt,
     }));
+
+    return { items, page, size, total, totalPages };
   }
 
   /**

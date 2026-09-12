@@ -14,9 +14,12 @@ import {
   RefreshCw,
   Lock,
   Link as LinkIcon,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { api } from '../../services/api';
-import { User, EvidenceShareItem } from '../../types';
+import { User, PaginatedSharesResponse } from '../../types';
+// Removed unused EvidenceShareItem import
 
 interface ShareEvidenceModalProps {
   isOpen: boolean;
@@ -54,24 +57,35 @@ export const ShareEvidenceModal: React.FC<ShareEvidenceModalProps> = ({
   const [copiedToken, setCopiedToken] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
-  // Shares history state
-  const [sharesHistory, setSharesHistory] = useState<EvidenceShareItem[]>([]);
+  // Shares history state with pagination
+  const [sharesResponse, setSharesResponse] = useState<PaginatedSharesResponse | null>(null);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
   const [revokingShareId, setRevokingShareId] = useState<string | null>(null);
+  // Pagination controls
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const pageSize = 20; // fixed default per requirements
 
   // General error state
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      setError(null);
-      setCreatedSecret(null);
-      setCopiedToken(false);
-      setCopiedLink(false);
-      fetchEligibleRecipients();
-      fetchSharesHistory();
+  if (isOpen) {
+    setError(null);
+    setCreatedSecret(null);
+    setCopiedToken(false);
+    setCopiedLink(false);
+    fetchEligibleRecipients();
+    // Load first page of share history when modal opens
+    setCurrentPage(1);
+    fetchSharesHistory(1);
+  }
+}, [isOpen, versionId, caseId]);
+  // Fetch shares when page changes or history tab is active
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchSharesHistory(currentPage);
     }
-  }, [isOpen, versionId, caseId]);
+  }, [currentPage, activeTab]);
 
   const fetchEligibleRecipients = async () => {
     setLoadingRecipients(true);
@@ -88,11 +102,11 @@ export const ShareEvidenceModal: React.FC<ShareEvidenceModalProps> = ({
     }
   };
 
-  const fetchSharesHistory = async () => {
+  const fetchSharesHistory = async (page: number = 1) => {
     setLoadingHistory(true);
     try {
-      const history = await api.getSharesForVersion(versionId);
-      setSharesHistory(history);
+      const response = await api.getSharesForVersion(versionId, { page, size: pageSize });
+      setSharesResponse(response);
     } catch (err: any) {
       // Non-critical, ignore or set soft error
     } finally {
@@ -112,7 +126,9 @@ export const ShareEvidenceModal: React.FC<ShareEvidenceModalProps> = ({
     try {
       const res = await api.createShare(versionId, selectedTargetUserId, expirationHours);
       setCreatedSecret(res);
-      fetchSharesHistory();
+      // Refresh history to page 1 after creation
+      setCurrentPage(1);
+      fetchSharesHistory(1);
     } catch (err: any) {
       setError(err.message || 'Failed to generate time-bound evidence share');
     } finally {
@@ -124,7 +140,8 @@ export const ShareEvidenceModal: React.FC<ShareEvidenceModalProps> = ({
     setRevokingShareId(shareId);
     try {
       await api.revokeShare(shareId);
-      await fetchSharesHistory();
+      // Keep current page after revocation
+      await fetchSharesHistory(currentPage);
     } catch (err: any) {
       setError(err.message || 'Failed to revoke evidence share');
     } finally {
@@ -207,7 +224,7 @@ export const ShareEvidenceModal: React.FC<ShareEvidenceModalProps> = ({
             }`}
           >
             <Clock className="w-4 h-4" />
-            <span>Share History & Revocation ({sharesHistory.length})</span>
+            <span>Share History & Revocation ({sharesResponse?.items?.length ?? 0})</span>
           </button>
         </div>
 
@@ -395,7 +412,7 @@ export const ShareEvidenceModal: React.FC<ShareEvidenceModalProps> = ({
                 <span>Historical Share Registry for Version {versionNumber}</span>
                 <button
                   type="button"
-                  onClick={fetchSharesHistory}
+                  onClick={() => fetchSharesHistory(currentPage)}
                   className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingHistory ? 'animate-spin' : ''}`} />
@@ -404,16 +421,16 @@ export const ShareEvidenceModal: React.FC<ShareEvidenceModalProps> = ({
               </div>
 
               {loadingHistory ? (
-                <div className="py-8 text-center text-xs text-slate-500">
-                  Fetching historical share registry...
-                </div>
-              ) : sharesHistory.length === 0 ? (
-                <div className="py-8 text-center text-xs text-slate-500">
-                  No time-bound shares have been generated for this evidence version.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {sharesHistory.map((share) => (
+            <div className="py-8 text-center text-xs text-slate-500">
+              Fetching historical share registry...
+            </div>
+          ) : (sharesResponse?.items?.length ?? 0) === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-500">
+              No time-bound shares have been generated for this evidence version.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sharesResponse?.items.map((share) => (
                     <div
                       key={share.id}
                       className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
@@ -465,6 +482,33 @@ export const ShareEvidenceModal: React.FC<ShareEvidenceModalProps> = ({
                       )}
                     </div>
                   ))}
+
+                  {/* Pagination Controls */}
+                  {sharesResponse && sharesResponse.totalPages > 1 && (
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                        disabled={currentPage <= 1 || loadingHistory}
+                        className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 disabled:opacity-40 text-slate-300 font-bold flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed transition-colors"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>Previous</span>
+                      </button>
+                      <span className="text-slate-400 font-mono text-[11px]">
+                        Page {sharesResponse.page} of {sharesResponse.totalPages} ({sharesResponse.total} total)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((prev) => Math.min(prev + 1, sharesResponse.totalPages))}
+                        disabled={currentPage >= sharesResponse.totalPages || loadingHistory}
+                        className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 disabled:opacity-40 text-slate-300 font-bold flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed transition-colors"
+                      >
+                        <span>Next</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

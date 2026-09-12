@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Query } from '@nestjs/common';
+import { ListActiveSharesDto } from './dto/list-active-shares.dto';
 import { CurrentUser, UserPayload } from '../auth/decorators/current-user.decorator';
 import { SharesService } from './shares.service';
 import { CreateShareDto } from './dto/create-share.dto';
@@ -44,8 +46,9 @@ export class SharesController {
   async getSharesForVersion(
     @Param('versionId') versionId: string,
     @CurrentUser() user: UserPayload,
+    @Query() pagination: ListActiveSharesDto,
   ) {
-    return this.sharesService.getSharesForVersion(versionId, user);
+    return this.sharesService.getSharesForVersion(versionId, user, pagination);
   }
 
   /**

@@ -15,6 +15,7 @@ import {
   RegistrationRequest,
   EvidenceShareItem,
   ShareStatus,
+  PaginatedSharesResponse,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -590,8 +591,12 @@ export const api = {
     });
   },
 
-  async getSharesForVersion(versionId: string) {
-    return request<EvidenceShareItem[]>(`/shares/version/${versionId}`);
+  async getSharesForVersion(versionId: string, pagination?: { page?: number; size?: number }) {
+    const query = new URLSearchParams();
+    if (pagination?.page) query.append('page', pagination.page.toString());
+    if (pagination?.size) query.append('size', pagination.size.toString());
+    const endpoint = `/shares/version/${versionId}${query.toString() ? `?${query.toString()}` : ''}`;
+    return request<PaginatedSharesResponse>(endpoint);
   },
 
   async revokeShare(shareId: string) {
