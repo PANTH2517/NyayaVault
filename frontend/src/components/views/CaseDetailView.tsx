@@ -1,28 +1,27 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Briefcase,
   ArrowLeft,
   FileText,
   Upload,
   UserPlus,
-  Shield,
-  FileUp,
+  ShieldCheck,
   Clock,
   CheckCircle2,
   Lock,
   ArrowRight,
-  ShieldAlert,
   Users,
   Activity,
   Fingerprint,
-  FileCheck2,
-  KeyRound,
-  ShieldCheck,
+  Search,
+  Filter,
+  X,
+  FileUp,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Case, Document, DocumentClassification, DocumentStatus, User } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { MotionReveal, MotionStatus } from '../motion';
+import { MotionReveal, MotionStatus, MotionStagger, MotionCard } from '../motion';
 import { AUTHORITATIVE_EVIDENCE_TYPES, getEvidenceTypeLabel } from '../../utils/evidenceTypes';
 
 interface CaseDetailViewProps {
@@ -41,6 +40,11 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Evidence Search & Filter within Case Workspace
+  const [docSearch, setDocSearch] = useState('');
+  const [docStatusFilter, setDocStatusFilter] = useState<string>('ALL');
+  const [docClassFilter, setDocClassFilter] = useState<string>('ALL');
 
   // Upload Document Modal State
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -69,7 +73,7 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
       setCaseItem(cData);
       setDocuments(docsData);
     } catch (err: any) {
-      setError(err.message || 'Failed to load case details');
+      setError(err.message || 'Failed to load case workspace details');
     } finally {
       setLoading(false);
     }
@@ -128,6 +132,22 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
     }
   };
 
+  // Filter evidence within current case
+  const filteredDocuments = useMemo(() => {
+    return documents.filter((doc) => {
+      const matchesSearch =
+        !docSearch.trim() ||
+        doc.title.toLowerCase().includes(docSearch.toLowerCase()) ||
+        (doc.description && doc.description.toLowerCase().includes(docSearch.toLowerCase())) ||
+        (doc.exhibitNumber && doc.exhibitNumber.toLowerCase().includes(docSearch.toLowerCase()));
+
+      const matchesStatus = docStatusFilter === 'ALL' || doc.currentStatus === docStatusFilter;
+      const matchesClass = docClassFilter === 'ALL' || doc.classification === docClassFilter;
+
+      return matchesSearch && matchesStatus && matchesClass;
+    });
+  }, [documents, docSearch, docStatusFilter, docClassFilter]);
+
   const statusBadges: Record<DocumentStatus, { label: string; style: string; icon: any }> = {
     DRAFT: { label: 'DRAFT', style: 'bg-slate-500/15 text-slate-300 border-slate-500/30', icon: Clock },
     UNDER_REVIEW: { label: 'UNDER REVIEW', style: 'bg-amber-500/15 text-amber-300 border-amber-500/30', icon: Clock },
@@ -137,9 +157,29 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
 
   if (loading) {
     return (
-      <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-3 text-slate-400 text-xs font-sans">
-        <Activity className="w-6 h-6 animate-spin text-amber-400" />
-        <p className="font-mono font-bold text-slate-300">Loading Case Operational Hub...</p>
+      <div className="space-y-8 font-sans">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-2 text-xs font-mono font-bold text-slate-400"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>BACK TO INVESTIGATIONS LIST</span>
+        </button>
+
+        <div className="p-8 rounded-3xl bg-slate-900/60 border border-slate-800/80 space-y-6 animate-pulse">
+          <div className="h-6 bg-slate-800 rounded w-1/4" />
+          <div className="h-8 bg-slate-800 rounded w-1/2" />
+          <div className="h-4 bg-slate-800 rounded w-3/4" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[1, 2].map((n) => (
+            <div key={n} className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800/80 h-48 animate-pulse space-y-4">
+              <div className="h-4 bg-slate-800 rounded w-1/3" />
+              <div className="h-6 bg-slate-800 rounded w-2/3" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -173,7 +213,8 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div className="space-y-3 max-w-3xl">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-xl border border-amber-500/20">
+              <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-xl border border-amber-500/20 flex items-center gap-1.5">
+                <Briefcase className="w-3.5 h-3.5" />
                 CASE {caseItem.caseNumber}
               </span>
               <MotionStatus status={caseItem.status} />
@@ -211,7 +252,7 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
           </div>
         </div>
 
-        {/* Assigned Personnel */}
+        {/* Assigned Personnel Bar */}
         <div className="pt-5 border-t border-slate-800/80 space-y-3">
           <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-300">
             <Users className="w-4 h-4 text-amber-400" />
@@ -238,9 +279,9 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
         </div>
       </MotionReveal>
 
-      {/* Case Evidence Collection Grid */}
+      {/* Case Evidence Collection Workspace & Filtering */}
       <MotionReveal delayMs={50} className="space-y-5">
-        <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-widest">
               PROTECTED DIGITAL ARTIFACTS
@@ -250,11 +291,51 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
               Evidence Collection ({documents.length})
             </h2>
           </div>
+
           <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-xl font-bold flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4" />
             SHA-256 Byte Verified
           </span>
         </div>
+
+        {/* Evidence Search & Filter Toolbar */}
+        {documents.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                value={docSearch}
+                onChange={(e) => setDocSearch(e.target.value)}
+                placeholder="Search evidence title, exhibit #..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+
+            <select
+              value={docStatusFilter}
+              onChange={(e) => setDocStatusFilter(e.target.value)}
+              className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 font-mono focus:outline-none focus:border-amber-500"
+            >
+              <option value="ALL">All Statuses ({documents.length})</option>
+              <option value="DRAFT">DRAFT</option>
+              <option value="UNDER_REVIEW">UNDER REVIEW</option>
+              <option value="APPROVED">APPROVED</option>
+              <option value="SEALED">SEALED</option>
+            </select>
+
+            <select
+              value={docClassFilter}
+              onChange={(e) => setDocClassFilter(e.target.value)}
+              className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 font-mono focus:outline-none focus:border-amber-500"
+            >
+              <option value="ALL">All Classification Levels</option>
+              <option value="RESTRICTED">RESTRICTED</option>
+              <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+              <option value="HIGHLY_CONFIDENTIAL">HIGHLY CONFIDENTIAL</option>
+            </select>
+          </div>
+        )}
 
         {documents.length === 0 ? (
           <div className="p-12 text-center text-xs text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/80 space-y-3 font-sans">
@@ -273,15 +354,29 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
               </button>
             )}
           </div>
+        ) : filteredDocuments.length === 0 ? (
+          <div className="p-8 text-center text-xs text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/80 space-y-2 font-sans">
+            <p className="font-bold text-slate-300">NO EVIDENCE MATCHES CURRENT SEARCH FILTER</p>
+            <button
+              onClick={() => {
+                setDocSearch('');
+                setDocStatusFilter('ALL');
+                setDocClassFilter('ALL');
+              }}
+              className="text-amber-400 font-bold underline cursor-pointer"
+            >
+              Reset Filters
+            </button>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {documents.map((doc) => {
+          <MotionStagger staggerMs={40} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {filteredDocuments.map((doc) => {
               const currentVer = doc.versions && doc.versions[0];
               const st = statusBadges[doc.currentStatus];
               const StatusIcon = st.icon;
 
               return (
-                <div
+                <MotionCard
                   key={doc.id}
                   onClick={() => onSelectDocument(doc.id)}
                   className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 hover:border-amber-500/40 transition-all duration-300 cursor-pointer space-y-4 group shadow-xl backdrop-blur-2xl relative"
@@ -349,10 +444,10 @@ export const CaseDetailView: React.FC<CaseDetailViewProps> = ({
                       <ArrowRight className="w-4 h-4" />
                     </span>
                   </div>
-                </div>
+                </MotionCard>
               );
             })}
-          </div>
+          </MotionStagger>
         )}
       </MotionReveal>
 

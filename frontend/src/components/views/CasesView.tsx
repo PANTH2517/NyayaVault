@@ -1,21 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import {
   Briefcase,
   Plus,
   Search,
-  Folder,
-  Shield,
   ArrowRight,
-  UserCheck,
-  Lock,
   Filter,
-  CheckCircle2,
-  Activity,
   Users,
-  Clock,
-  ShieldAlert,
-  FileCheck2,
+  Activity,
+  RotateCcw,
+  X,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Case } from '../../types';
@@ -68,6 +61,13 @@ export const CasesView: React.FC<CasesViewProps> = ({ onSelectCase }) => {
     return matchesSearch && matchesStatus;
   });
 
+  const activeFiltersCount = (searchFilter ? 1 : 0) + (statusFilter !== 'ALL' ? 1 : 0);
+
+  const handleResetFilters = () => {
+    setSearchFilter('');
+    setStatusFilter('ALL');
+  };
+
   return (
     <div className="space-y-8 font-sans">
       {/* 1. INVESTIGATIONS PAGE HEADER */}
@@ -107,55 +107,106 @@ export const CasesView: React.FC<CasesViewProps> = ({ onSelectCase }) => {
       </MotionReveal>
 
       {/* 2. FILTERS & SEARCH TOOLBAR */}
-      <MotionReveal delayMs={50} className="flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5 rounded-3xl bg-slate-900/80 border border-slate-800/80 backdrop-blur-2xl">
-        <div className="flex items-center gap-3 flex-1 min-w-[260px]">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder="Search by case number, title, or summary..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono transition-colors"
-            />
+      <MotionReveal delayMs={50} className="p-4 sm:p-5 rounded-3xl bg-slate-900/80 border border-slate-800/80 backdrop-blur-2xl space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-1 min-w-[260px]">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                placeholder="Search by case number, title, or summary..."
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-mono transition-colors"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-4 py-2.5 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-300 focus:outline-none focus:border-amber-500 font-mono"
+            >
+              <option value="ALL">All Statuses ({cases.length})</option>
+              <option value="OPEN">OPEN Only</option>
+              <option value="UNDER_INVESTIGATION">UNDER INVESTIGATION</option>
+              <option value="CLOSED">CLOSED Only</option>
+              <option value="ARCHIVED">ARCHIVED Only</option>
+            </select>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2.5 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-300 focus:outline-none focus:border-amber-500 font-mono"
-          >
-            <option value="ALL">All Statuses ({cases.length})</option>
-            <option value="OPEN">OPEN Only</option>
-            <option value="UNDER_INVESTIGATION">UNDER INVESTIGATION</option>
-            <option value="CLOSED">CLOSED Only</option>
-            <option value="ARCHIVED">ARCHIVED Only</option>
-          </select>
-        </div>
+        {/* Active Filters Bar */}
+        {activeFiltersCount > 0 && (
+          <div className="pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-mono text-slate-400 font-bold">Active Filters ({activeFiltersCount}):</span>
+              {searchFilter && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-mono">
+                  Search: "{searchFilter}"
+                  <button onClick={() => setSearchFilter('')} className="hover:text-white cursor-pointer"><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {statusFilter !== 'ALL' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-mono">
+                  Status: {statusFilter}
+                  <button onClick={() => setStatusFilter('ALL')} className="hover:text-white cursor-pointer"><X className="w-3 h-3" /></button>
+                </span>
+              )}
+            </div>
+
+            <button
+              onClick={handleResetFilters}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-mono font-bold transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              <span>Clear Filters</span>
+            </button>
+          </div>
+        )}
       </MotionReveal>
 
-      {/* 3. CASE COLLECTION GRID */}
+      {/* 3. CASE COLLECTION GRID & SKELETON */}
       {loading ? (
-        <div className="min-h-[40vh] flex flex-col items-center justify-center space-y-3 text-slate-400 text-xs font-sans">
-          <Activity className="w-6 h-6 animate-spin text-amber-400" />
-          <p className="font-mono font-bold text-slate-300">Loading Authorized Case Workspaces...</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[1, 2, 3, 4].map((n) => (
+            <div key={n} className="p-7 rounded-3xl bg-slate-900/60 border border-slate-800/80 space-y-4 animate-pulse">
+              <div className="flex items-center justify-between">
+                <div className="h-5 bg-slate-800 rounded w-1/3" />
+                <div className="h-6 bg-slate-800 rounded-full w-24" />
+              </div>
+              <div className="h-6 bg-slate-800 rounded w-2/3" />
+              <div className="h-4 bg-slate-800 rounded w-3/4" />
+              <div className="h-10 bg-slate-950 rounded-2xl border border-slate-800/80" />
+            </div>
+          ))}
         </div>
       ) : error ? (
         <MotionReveal className="p-6 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-sans">
           {error}
         </MotionReveal>
       ) : filteredCases.length === 0 ? (
-        <div className="p-12 text-center text-xs text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/80 space-y-3 font-sans">
+        <div className="p-12 text-center text-xs text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/80 space-y-4 font-sans">
           <Briefcase className="w-10 h-10 text-slate-600 mx-auto" />
-          <p className="font-extrabold text-sm text-slate-300">NO CASES FOUND</p>
-          <p className="text-slate-400 max-w-md mx-auto leading-relaxed">
-            {user?.role === 'ADMIN'
-              ? 'No active cases match your search filter criteria. Adjust search parameters or create a new case.'
-              : 'No assigned cases match your current filter criteria under your authorized scope.'}
-          </p>
+          <div className="space-y-1">
+            <p className="font-extrabold text-sm text-slate-300">NO CASES FOUND</p>
+            <p className="text-slate-400 max-w-md mx-auto leading-relaxed">
+              {user?.role === 'ADMIN'
+                ? 'No active cases match your search filter criteria. Adjust search parameters or create a new case.'
+                : 'No assigned cases match your current filter criteria under your authorized scope.'}
+            </p>
+          </div>
+          {activeFiltersCount > 0 && (
+            <button
+              onClick={handleResetFilters}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs inline-flex items-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Reset Search Filters</span>
+            </button>
+          )}
         </div>
       ) : (
         <MotionStagger staggerMs={50} className="grid grid-cols-1 md:grid-cols-2 gap-6">
